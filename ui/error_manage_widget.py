@@ -4,6 +4,8 @@ from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QIcon
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTableView, QHeaderView, QPushButton
 
+from base.audio_data_manager import get_record_audio_data_from_db
+
 
 class ErrorManageWidget(QWidget):
     def __init__(self):
@@ -11,12 +13,8 @@ class ErrorManageWidget(QWidget):
 
         self.error_manage_table = QTableView()
         self.error_manage_table.setIconSize(QSize(25, 25)) 
-        self.error_manage_model = CustomStandardItemModel(10, 7, [5])
+        self.error_manage_model = CustomStandardItemModel(0, 8, [6])
         self.error_manage_table.setModel(self.error_manage_model)
-
-        self.play_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/play.png")
-        self.pause_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/pause.png")
-        # self.error_manage_table.clicked.connect(self.on_cell_clicked)
 
         self.init_ui()
 
@@ -31,15 +29,64 @@ class ErrorManageWidget(QWidget):
                                                                     border-top: 1px solid rgb(130, 135, 144);
                                                                     color: black;
                                                                   }""")
-        self.error_manage_table.model().setHorizontalHeaderLabels(["录制时间", "结束时间", "异常时间", "操作员", "处理结果", "备注", "操作"])
-        self.error_manage_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.error_manage_table.model().setHorizontalHeaderLabels(["文件名称", "录制时间", "结束时间", "异常时间", "操作员", "处理结果", "备注", "操作"])
+        header = self.error_manage_table.horizontalHeader()
+        for i in range(self.error_manage_model.columnCount()):
+            header.setSectionResizeMode(i, QHeaderView.Interactive)
+        # header.setStretchLastSection(True)
+        header.setSectionResizeMode(6, QHeaderView.Stretch)
 
+        result = get_record_audio_data_from_db()
+        if result:
+            self.add_history_data(result)
         self.setup_buttons_in_last_column()
 
         error_manage_table_layout = QVBoxLayout()
         error_manage_table_layout.addWidget(self.error_manage_table)
 
         return error_manage_table_layout
+    
+    def add_history_data(self, audio_datas):
+        for audio_data in audio_datas:
+            record_audio_data_path, record_time, stop_time, _, error_time, operator, operator_result, description = audio_data
+            self.add_history_data_to_table(record_audio_data_path, 
+                                           record_time,
+                                           stop_time,
+                                           error_time,
+                                           operator,
+                                           operator_result,
+                                           description)
+    
+    def add_history_data_to_table(self,
+                                  record_audio_data_path: str,
+                                  record_time: str,
+                                  stop_time: str,
+                                  error_time: str,
+                                  operator: str,
+                                  operator_result: str,
+                                  description: str):
+        audio_data_items = []
+        record_audio_name = self.get_record_audio_data_name(record_audio_data_path)
+        record_audio_name_item = QStandardItem(record_audio_name)
+        record_time_item = QStandardItem(str(record_time))
+        stop_time_item = QStandardItem(str(stop_time))
+        error_item = QStandardItem(error_time)
+        operator_item = QStandardItem(operator)
+        operator_result_item = QStandardItem(operator_result)
+        description_item = QStandardItem(description)
+        audio_data_items.append(record_audio_name_item)
+        audio_data_items.append(record_time_item)
+        audio_data_items.append(stop_time_item)
+        audio_data_items.append(error_item)
+        audio_data_items.append(operator_item)
+        audio_data_items.append(operator_result_item)
+        audio_data_items.append(description_item)
+        self.error_manage_model.appendRow(audio_data_items)
+    
+    def get_record_audio_data_name(self, record_audio_data_path: str):
+        if record_audio_data_path:
+            return record_audio_data_path.split("/")[-1].split(".")[0]
+        return ""
     
     def setup_buttons_in_last_column(self):
         table = self.error_manage_table  # 修正变量名
@@ -68,17 +115,6 @@ class ErrorManageWidget(QWidget):
         
     def on_ignore_btn_clicked(self, row):
         print(f"忽略第 {row} 行")
-    
-    def on_cell_clicked(self, index):
-        if index.column() == 6:  # 操作列（列索引4）
-            item = self.error_manage_model.item(index.row(), index.column())
-            if item.icon() == self.play_icon:
-                item.setIcon(self.pause_icon)
-            else:
-                item.setIcon(self.play_icon)
-            # 通知视图更新图标
-            self.error_manage_model.dataChanged.emit(index, index, [Qt.DecorationRole])
-
 
 
 class CustomStandardItemModel(QStandardItemModel):
@@ -94,11 +130,6 @@ class CustomStandardItemModel(QStandardItemModel):
                 return Qt.ItemIsEnabled | Qt.ItemIsSelectable
         return super().flags(index)
     
-class CustomStandardItem(QStandardItem):
-    def __init__(self, text:str, icon_url:str):
-        super().__init__(text)
-        if icon_url:
-            self.setIcon(QIcon(icon_url))
     
 if __name__ == "__main__":
     app = QApplication(sys.argv)
@@ -106,3 +137,14 @@ if __name__ == "__main__":
     window.setGeometry(100, 100, 800, 600)
     window.show()
     sys.exit(app.exec_())
+
+
+
+
+
+
+
+
+
+
+        

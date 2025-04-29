@@ -2,7 +2,7 @@ import sys
 
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QIcon
-from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QTableView, QHeaderView
+from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QTableView, QHeaderView, QSizePolicy
 
 from base.audio_data_manager import get_record_audio_data_from_db
 
@@ -13,15 +13,12 @@ class HistoryDataWindow(QDialog):
 
         self.history_data_table = QTableView()
         self.history_data_table.setIconSize(QSize(25, 25)) 
-        self.history_data_model = CustomStandardItemModel(10, 7, [5])
+        self.history_data_model = CustomStandardItemModel(0, 7, [5])
         self.history_data_table.setModel(self.history_data_model)
 
         self.play_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/play.png")
         self.pause_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/pause.png")
         self.history_data_table.clicked.connect(self.on_cell_clicked)
-
-        result = get_record_audio_data_from_db()
-        print(result)
 
         self.init_ui()
 
@@ -38,14 +35,17 @@ class HistoryDataWindow(QDialog):
                                                                     color: black;
                                                                   }""")
         self.history_data_table.model().setHorizontalHeaderLabels(["文件名称", "录制时间", "结束时间", "异常", "操作员", "备注", "操作"])
-        self.history_data_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # self.history_data_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        header = self.history_data_table.horizontalHeader()
+        for i in range(self.history_data_model.columnCount()):
+            header.setSectionResizeMode(i, QHeaderView.Interactive)
+        # header.setStretchLastSection(True)
+        header.setSectionResizeMode(5, QHeaderView.Stretch)
 
-        for row in range(self.history_data_model.rowCount()):
-            item = self.history_data_model.item(row, 5)
-            if not item:
-                item = CustomStandardItem("111", "ui/ui_pic/sequence_pic/play.png")
-                self.history_data_model.setItem(row, 5, item)
-            item.setIcon(self.play_icon)
+        result = get_record_audio_data_from_db()
+        if result:
+            self.add_history_data(result)
+
         self.history_data_table.viewport().update()
 
         history_data_table_layout = QVBoxLayout()
@@ -53,13 +53,60 @@ class HistoryDataWindow(QDialog):
 
         return history_data_table_layout
     
+    def add_history_data(self, audio_datas):
+        for audio_data in audio_datas:
+            record_audio_data_path, record_time, stop_time, error, _, operator, _, description = audio_data
+            self.add_history_data_to_table(record_audio_data_path, 
+                                           record_time, 
+                                           stop_time, 
+                                           error, 
+                                           operator, 
+                                           description)
+    
+    def add_history_data_to_table(self, 
+                                  record_audio_data_path: str, 
+                                  record_time: str, 
+                                  stop_time: str, 
+                                  error: str, 
+                                  operator: str, 
+                                  description: str):
+        audio_data_items = []
+        record_audio_name = self.get_record_audio_data_name(record_audio_data_path)
+        play_item = CustomStandardItem("D:/gqgit/new_project/ui/ui_pic/sequence_pic/play.png", "播放")
+        record_audio_name_item = QStandardItem(record_audio_name)
+        record_time_item = QStandardItem(str(record_time))
+        stop_time_item = QStandardItem(str(stop_time))
+        error_item = QStandardItem(error)
+        operator_item = QStandardItem(operator)
+        description_item = QStandardItem(description)
+        audio_data_items.append(record_audio_name_item)
+        audio_data_items.append(record_time_item)
+        audio_data_items.append(stop_time_item)
+        audio_data_items.append(error_item)
+        audio_data_items.append(operator_item)
+        audio_data_items.append(description_item)
+        audio_data_items.append(play_item)
+        self.history_data_model.appendRow(audio_data_items)
+    
+    def get_record_audio_data_name(self, record_audio_data_path: str):
+        if record_audio_data_path:
+            return record_audio_data_path.split("/")[-1].split(".")[0]
+        return ""
+    
     def on_cell_clicked(self, index):
-        if index.column() == 5:  # 操作列（列索引4）
+        if index.column() == 6:
+            print("点击了操作列")
             item = self.history_data_model.item(index.row(), index.column())
-            if item.icon() == self.play_icon:
+            if item.flag:
+                print("播放")
                 item.setIcon(self.pause_icon)
+                item.setText("暂停")
+                item.flag = False
             else:
+                print("暂停")
                 item.setIcon(self.play_icon)
+                item.setText("播放")
+                item.flag = True
             # 通知视图更新图标
             self.history_data_model.dataChanged.emit(index, index, [Qt.DecorationRole])
 
@@ -79,8 +126,11 @@ class CustomStandardItemModel(QStandardItemModel):
     
     
 class CustomStandardItem(QStandardItem):
-    def __init__(self, text:str, icon_url:str):
+    def __init__(self, icon_url:str, text:str = None):
         super().__init__(text)
+
+        self.flag = True
+
         if icon_url:
             self.setIcon(QIcon(icon_url))
 
