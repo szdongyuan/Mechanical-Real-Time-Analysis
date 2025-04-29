@@ -1,7 +1,8 @@
+import json
+import uuid
 import sys
 import time
 import threading
-import json
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,7 +13,7 @@ from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QLineEdit, QLabel, QHBoxLayout, QGroupBox
 
-from base.audio_data_manager import save_audio_data
+from base.audio_data_manager import save_audio_data, add_record_audio_data_to_db
 from base.record_audio import AudioDataManager
 from consts import ui_style_const
 from my_controls.my_datatime_label import MyDateTimeLabel
@@ -28,7 +29,7 @@ class MainWidget(QWidget):
         self.channels = None
         self.selected_channels = None
         self.blocksize = 1024
-        self.total_display_time = 600  # s
+        self.total_display_time = 60  # s
         self.plot_time = 5
         self.analysis_interval = 1000  # ms
         self.ctx = sd._CallbackContext()
@@ -55,15 +56,12 @@ class MainWidget(QWidget):
         self.plot_points_section = self.plot_time * self.sampling_rate
         self.ax_list = []
         self.line_list = []
+        self.start_record_time = None
 
-        self.auto_save_count = Countdown()
+        self.auto_save_count = Countdown(self.total_display_time - 20)
         self.auto_save_count.signal_for_update.connect(self.auto_save_data)
 
         self.t = None
-
-        # # 创建定时器用于更新波形图
-        # self.timer = QTimer()
-        # self.timer.timeout.connect(self.update_plot)
 
         self.audio_manager = AudioDataManager()
         self.audio_manager.signal_for_update.connect(self.update_data)
@@ -82,9 +80,6 @@ class MainWidget(QWidget):
         layout.addLayout(date_device_layout)
         layout.addWidget(chart_box)
         self.setLayout(layout)
-        # container = QWidget()
-        # container.setLayout(layout)
-        # self.setCentralWidget(container)
 
     def create_chart_layout(self):
         chart_box = QGroupBox()
@@ -97,12 +92,28 @@ class MainWidget(QWidget):
         return chart_box
     
     def on_button_pressed(self):
-        print(time.strftime("%Y%m%d_%H%M%S", time.localtime()), "\n", time.time())
+        print(time.strftime("%Y%m%d:%H%M%S", time.localtime()))
         size = self.button.iconSize()
         self.button.setIconSize(QSize(size.width()-10, size.height()-10))
 
     def auto_save_data(self):
-        save_audio_data(self.audio_data, self.sampling_rate, self.selected_channels)
+        mac_address = get_mac_address()
+        mac_address = mac_address.replace(":", "") if mac_address else None
+
+        channels = len(self.selected_channels)
+        seva_path = "D:/gqgit/new_project/audio/record/"
+        stop_time = time.strftime("%Y%m%d%H%M%S", time.localtime())
+        file_name = seva_path + mac_address + "_" + self.start_record_time + "_" + stop_time + "_" + str(self.sampling_rate) + "_" + str(channels) + ".wav"
+        save_audio_data(self.audio_data, self.sampling_rate, file_name)
+
+        record_id = str(uuid.uuid1())
+
+        add_record_audio_data_to_db(record_id, 
+                                    file_name, 
+                                    self.start_record_time, 
+                                    time.strftime("%Y%m%d_%H%M%S", time.localtime()))
+
+        self.start_record_time = stop_time
 
     def create_record_layout(self):
         self.button.setFixedSize(150, 150)
@@ -156,6 +167,7 @@ class MainWidget(QWidget):
             print(1111111111111111111111,t.name, t.is_alive())
         if not self.recording:
             self.auto_save_count.count_start()
+            self.start_record_time = time.strftime("%Y%m%d%H%M%S", time.localtime())
             # 开始录音
             self.button.setIcon(QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/pause.png"))
             self.button.setIconSize(self.button.size())
@@ -191,6 +203,7 @@ class MainWidget(QWidget):
             self.set_light_color(self.green_light, 'gray')
             self.recording = False
             self.auto_save_count.count_stop()
+            self.start_record_time = None
             # AudioDataManager().stop_recording(self.ctx)
             # self.t._stop()
             # self.ctx.stop_stream()
@@ -289,6 +302,11 @@ class MainWidget(QWidget):
         self.audio_manager.wait()
         self.recording = False
         event.accept()
+
+def get_mac_address():
+    mac = uuid.getnode()
+    mac_address = ":".join(("%012x" % mac)[i:i + 2] for i in range(0, 12, 2))
+    return mac_address
 
 
 if __name__ == "__main__":

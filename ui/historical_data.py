@@ -4,6 +4,8 @@ from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QIcon
 from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QTableView, QHeaderView
 
+from base.audio_data_manager import get_record_audio_data_from_db
+
 
 class HistoryDataWindow(QDialog):
     def __init__(self):
@@ -11,12 +13,15 @@ class HistoryDataWindow(QDialog):
 
         self.history_data_table = QTableView()
         self.history_data_table.setIconSize(QSize(25, 25)) 
-        self.history_data_model = CustomStandardItemModel(10, 6, [4])
+        self.history_data_model = CustomStandardItemModel(10, 7, [5])
         self.history_data_table.setModel(self.history_data_model)
 
         self.play_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/play.png")
         self.pause_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/pause.png")
         self.history_data_table.clicked.connect(self.on_cell_clicked)
+
+        result = get_record_audio_data_from_db()
+        print(result)
 
         self.init_ui()
 
@@ -32,7 +37,7 @@ class HistoryDataWindow(QDialog):
                                                                     border-top: 1px solid rgb(130, 135, 144);
                                                                     color: black;
                                                                   }""")
-        self.history_data_table.model().setHorizontalHeaderLabels(["录制时间", "结束时间", "异常", "操作员", "备注", "操作"])
+        self.history_data_table.model().setHorizontalHeaderLabels(["文件名称", "录制时间", "结束时间", "异常", "操作员", "备注", "操作"])
         self.history_data_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
         for row in range(self.history_data_model.rowCount()):

@@ -7,9 +7,9 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QSpacerItem, QSizePolicy, QVBoxLayout
 
-from base.db_manager import DataSave
+from base.db_manager import DataManage
 from base.log_manager import LogManager
-from consts import error_code, model_consts, ui_style_const
+from consts import error_code, db_consts, ui_style_const
 from consts.running_consts import DEFAULT_DIR
 
 ACCESS_LVL_DICT = {"管理员": "Admin", "工程师": "Engineer", "操作员": "Operator"}
@@ -145,7 +145,7 @@ class LoginWindow(QDialog):
 
     @staticmethod
     def get_user_info_from_db(user_name):
-        with DataSave(model_consts.DATABASE_PATH) as database:
+        with DataManage(db_consts.DATABASE_PATH) as database:
             query_code, query_data = database.query("users_table",
                                                     ["user_name", "access_level", "password"],
                                                     {"user_name": user_name})
@@ -252,13 +252,13 @@ class AddAccountWindow(QDialog):
             self.logger.error("Username, password, and access level cannot be empty.")
             return False
         try:
-            with DataSave(model_consts.DATABASE_PATH) as database:
+            with DataManage(db_consts.DATABASE_PATH) as database:
                 result = database.query_matching_data([(username,)],
                                                       "users_table", ["user_name"],
                                                       ["user_id"])
                 if not result:
                     insert_code, msg = database.insert_data_into_db("users_table",
-                                                                      model_consts.USERS_COLUMNS,
+                                                                      db_consts.USERS_COLUMNS,
                                                                       [(username, password, access_lvl)])
 
                     if insert_code == error_code.OK:
@@ -351,7 +351,7 @@ class ChangePwdWindow(QDialog):
 
     def change_pwd_in_db(self, user_name, enc_pwd):
         try:
-            with DataSave(model_consts.DATABASE_PATH) as database:
+            with DataManage(db_consts.DATABASE_PATH) as database:
                 result = database.query_matching_data([(user_name,)], "users_table",
                                                       ["user_name"], ["password"])
                 if result:

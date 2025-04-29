@@ -2,14 +2,13 @@ import os
 import sqlite3
 import uuid
 import wave
-from datetime import datetime
 
 # from base.load_config import load_config
 from base.log_manager import LogManager
-from consts import model_consts, error_code
+from consts import db_consts, error_code
 
 
-class DataSave(object):
+class DataManage(object):
     def __init__(self, db_name):
         self.db_name = db_name
         self.connection = None
@@ -32,50 +31,37 @@ class DataSave(object):
             self.cursor = self.connection.cursor()
             create_record_audio_data_table_sql = '''
             CREATE TABLE "record_audio_data_table" (
-                record_id INTEGER NOT NULL ON CONFLICT ABORT DEFAULT NULL,
+                record_id TEXT,
+                file_path TEXT NOT NULL UNIQUE,
                 record_time DATETIME NOT NULL,
                 stop_time DATETIME NOT NULL,
                 error TEXT NOT NULL,
                 error_time DATETIME,
-                operator TEXT NOT NULL,
+                operator TEXT,
                 deal_result TEXT,
                 description TEXT,
-                PRIMARY KEY ("id")
+                PRIMARY KEY (record_id)
 );
             '''
+            create_users_table_sql = '''
+            CREATE TABLE IF NOT EXISTS users_table(
+                user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_name TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL,
+                access_level TEXT NOT NULL CHECK(access_level IN ('Admin', 'Engineer', 'Operator')),
+                user_created_time TEXT DEFAULT (DATETIME('now', '+8 hours')),
+                user_updated_time TEXT DEFAULT (DATETIME('now', '+8 hours'))
+            )
+            '''
             self.cursor.execute(create_record_audio_data_table_sql)
+            self.cursor.execute(create_users_table_sql)
             self.connection.commit()
             self.logger.info("Table and trigger creation success.")
             return error_code.OK, "Table creation success."
         except Exception as e:
-            err_msg = "Failed to create table. %s" % (str(e)[:40])
+            err_msg = "Failed to create table. %s" % (str(e))
             self.logger.error(err_msg)
             return error_code.INVALID_CREATE_TABLE, err_msg
-
-    def get_audio_data_list(self, source_dir_list, label):
-        data_list = []
-        n_file = 0
-        for source_dir in source_dir_list:
-            source_dir_path = os.path.join(model_consts.STORED_SAMPLE_PATH, source_dir).replace("\\", "/")
-            sub_folder_path = source_dir_path + "/" + label
-            source_dir_str = source_dir.split("/")
-            if not os.path.exists(sub_folder_path):
-                continue
-            for index, audio_file in enumerate(os.listdir(sub_folder_path)):
-                audio_data_id = str(uuid.uuid1())
-                file_path = os.path.join(source_dir, label, audio_file).replace("\\", "/")
-                product_model = source_dir_str[2].split("_")[0]
-                sample_rate = model_consts.SAMPLE_RATE
-                record_date = (datetime.strptime(source_dir_str[3], "%Y%m%d")).strftime("%Y-%m-%d")
-                sample_stimulus_data = self.get_audio_data_stimulus_info(sub_folder_path + "/" + audio_file)
-                result = self.query_matching_data([sample_stimulus_data], "stimulus_signal_table",
-                                                  model_consts.STIMULUS_COLUMNS,
-                                                  ['stimulus_signal_table.stimulus_id'])
-                stimulus_id = result[0][0] if result else None
-                sample_data = (audio_data_id, file_path, product_model, sample_rate, record_date, label, stimulus_id)
-                data_list.append(sample_data)
-                n_file += 1
-        return data_list
 
     def query_matching_data(self, data_list, table_name, check_column, select_column, logical_operator='AND'):
         result = []
@@ -93,14 +79,14 @@ class DataSave(object):
     def get_audio_data_stimulus_info(self, file_path):
         audio_stimulus_data = ()
         if file_path:
-            relpath = os.path.relpath(file_path, model_consts.DEFAULT_DIR).replace("\\", "/")
+            relpath = os.path.relpath(file_path, db_consts.DEFAULT_DIR).replace("\\", "/")
             relpath_str = relpath.split("/")
             stimulus_type = relpath_str[3].split("_")[0]
             stimulus_method = relpath_str[3].split("_")[1]
             repeat_times = relpath_str[3].split("_")[2]
             start_freq = relpath_str[4].split("_")[1]
             stop_feq = relpath_str[4].split("_")[2]
-            sample_rate = model_consts.SAMPLE_RATE
+            sample_rate = db_consts.SAMPLE_RATE
             total_time = self.get_wav_duration(file_path)
             is_default = self.set_default("stimulus_signal_table")
             audio_stimulus_data = (
@@ -145,7 +131,7 @@ class DataSave(object):
             self.logger.info("Insert data successfully.")
             return error_code.OK, "Insert data successfully."
         except Exception as e:
-            err_msg = "Failed to insert data into the database. %s" % (str(e)[:40])
+            err_msg = "Failed to insert data into the database. %s" % (str(e))
             self.logger.error(err_msg)
             return error_code.INVALID_INSERT, err_msg
 
@@ -205,44 +191,6 @@ class DataSave(object):
             self.cursor.execute(sql_query, sql_data)
             query_data = self.cursor.fetchall()
             return error_code.OK, query_data
-        except Exception as e:
-            err_msg = "Failed to query data from the table according to the condition. %s" % (str(e)[:40])
-            self.logger.error(err_msg)
-            return error_code.INVALID_QUERY, err_msg
-
-    def query_conditions(self):
-        try:
-            placeholders = ''
-            query_conditions = []
-            params = []
-            condition_mapping = self.get_data_config("data_load")
-            record_date_mapping = condition_mapping.get("record_date")
-            if record_date_mapping is not None:
-                for key, data_date_list in record_date_mapping.items():
-                    data_date_list = [] if not data_date_list else data_date_list
-                    for item in data_date_list:
-                        params.append(item)
-                        placeholders += '?'
-                query_conditions.append(f"record_date IN ({', '.join(placeholders)})")
-            for key, value in condition_mapping.items():
-                if key == "record_date":
-                    continue
-                if isinstance(value, list) and value:
-                    query_conditions.append(f"{key} IN ({', '.join(['?'] * len(value))})")
-                    params.extend(value)
-                elif value is not None:
-                    query_conditions.append(f"{key} = ?")
-                    params.append(value)
-            if any(key in condition_mapping for key in model_consts.STIMULUS_COLUMNS):
-                join_sql = ("INNER JOIN stimulus_signal_table ON audio_data_table.stimulus_id = "
-                            "stimulus_signal_table.stimulus_id")
-            select_columns = ', '.join(model_consts.SELECT_COLUMNS)
-            base_sql = f'SELECT {select_columns} FROM audio_data_table '
-            if query_conditions:
-                query_sql = f'{base_sql}{join_sql} WHERE {" AND ".join(query_conditions)}'
-            self.cursor.execute(query_sql, params)
-            query_data = self.cursor.fetchall()
-            return query_data
         except Exception as e:
             err_msg = "Failed to query data from the table according to the condition. %s" % (str(e)[:40])
             self.logger.error(err_msg)
