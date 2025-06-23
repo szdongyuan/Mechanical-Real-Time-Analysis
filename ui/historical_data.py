@@ -12,8 +12,8 @@ class HistoryDataWindow(QDialog):
         super().__init__()
 
         self.history_data_table = QTableView()
-        self.history_data_table.setIconSize(QSize(25, 25)) 
-        self.history_data_model = CustomStandardItemModel(0, 7, [5])
+        self.history_data_table.setIconSize(QSize(25, 25))
+        self.history_data_model = CustomStandardItemModel(0, 6, [4])
         self.history_data_table.setModel(self.history_data_model)
 
         self.play_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/play.png")
@@ -30,11 +30,15 @@ class HistoryDataWindow(QDialog):
     def create_history_data_table_layout(self):
         self.history_data_table.setColumnWidth(4, 100)  # 设置操作列宽度为 100 像素
         self.history_data_table.verticalHeader().setDefaultSectionSize(40)
-        self.history_data_table.setStyleSheet("""QTableView::item {
+        self.history_data_table.setStyleSheet(
+            """QTableView::item {
                                                                     border-top: 1px solid rgb(130, 135, 144);
                                                                     color: black;
-                                                                  }""")
-        self.history_data_table.model().setHorizontalHeaderLabels(["文件名称", "录制时间", "结束时间", "异常", "操作员", "备注", "操作"])
+                                                                  }"""
+        )
+        self.history_data_table.model().setHorizontalHeaderLabels(
+            ["文件名称", "录制时间", "结束时间", "操作员", "备注", "操作"]
+        )
         # self.history_data_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         header = self.history_data_table.horizontalHeader()
         for i in range(self.history_data_model.columnCount()):
@@ -52,49 +56,39 @@ class HistoryDataWindow(QDialog):
         history_data_table_layout.addWidget(self.history_data_table)
 
         return history_data_table_layout
-    
+
     def add_history_data(self, audio_datas):
         for audio_data in audio_datas:
-            record_audio_data_path, record_time, stop_time, error, _, operator, _, description = audio_data
-            self.add_history_data_to_table(record_audio_data_path, 
-                                           record_time, 
-                                           stop_time, 
-                                           error, 
-                                           operator, 
-                                           description)
-    
-    def add_history_data_to_table(self, 
-                                  record_audio_data_path: str, 
-                                  record_time: str, 
-                                  stop_time: str, 
-                                  error: str, 
-                                  operator: str, 
-                                  description: str):
+            record_audio_data_path, record_time, stop_time, operator, description = audio_data
+            # print(record_audio_data_path, record_time, stop_time, operator, description)
+            self.add_history_data_to_table(record_audio_data_path, record_time, stop_time, operator, description)
+
+    def add_history_data_to_table(
+        self, record_audio_data_path: str, record_time: str, stop_time: str, operator: str, description: str
+    ):
         audio_data_items = []
         record_audio_name = self.get_record_audio_data_name(record_audio_data_path)
         play_item = CustomStandardItem("D:/gqgit/new_project/ui/ui_pic/sequence_pic/play.png", "播放")
         record_audio_name_item = QStandardItem(record_audio_name)
         record_time_item = QStandardItem(str(record_time))
         stop_time_item = QStandardItem(str(stop_time))
-        error_item = QStandardItem(error)
         operator_item = QStandardItem(operator)
         description_item = QStandardItem(description)
         audio_data_items.append(record_audio_name_item)
         audio_data_items.append(record_time_item)
         audio_data_items.append(stop_time_item)
-        audio_data_items.append(error_item)
         audio_data_items.append(operator_item)
         audio_data_items.append(description_item)
         audio_data_items.append(play_item)
         self.history_data_model.appendRow(audio_data_items)
-    
+
     def get_record_audio_data_name(self, record_audio_data_path: str):
         if record_audio_data_path:
             return record_audio_data_path.split("/")[-1].split(".")[0]
         return ""
-    
+
     def on_cell_clicked(self, index):
-        if index.column() == 6:
+        if index.column() == 5:
             print("点击了操作列")
             item = self.history_data_model.item(index.row(), index.column())
             if item.flag:
@@ -123,10 +117,10 @@ class CustomStandardItemModel(QStandardItemModel):
             else:
                 return Qt.ItemIsEnabled | Qt.ItemIsSelectable
         return super().flags(index)
-    
-    
+
+
 class CustomStandardItem(QStandardItem):
-    def __init__(self, icon_url:str, text:str = None):
+    def __init__(self, icon_url: str, text: str = None):
         super().__init__(text)
 
         self.flag = True
@@ -134,7 +128,7 @@ class CustomStandardItem(QStandardItem):
         if icon_url:
             self.setIcon(QIcon(icon_url))
 
-    
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = HistoryDataWindow()
@@ -142,4 +136,3 @@ if __name__ == "__main__":
     window.setGeometry(100, 100, 800, 600)
     window.show()
     sys.exit(app.exec_())
-    

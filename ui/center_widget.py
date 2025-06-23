@@ -7,7 +7,9 @@ from ui.navigation_bar import NavigationBar
 from ui.historical_data import HistoryDataWindow
 from ui.device_list import DeviceListWindow
 from ui.error_information_textedit import ErrorInformationTextEdit
-from ui.test import MainWidget
+
+# from ui.test1 import MainWidget
+from ui.record_machine_audio_widget import RecordMachineAudioWidget
 from ui.error_manage_widget import ErrorManageWidget
 from ui.login_window import LoginWindow
 
@@ -20,10 +22,17 @@ class CenterWidget(QWidget):
         self.device_list_window = DeviceListWindow()
         self.error_information_textedit = ErrorInformationTextEdit()
         self.navigation_bar = NavigationBar()
-        self.main_widget = MainWidget(self)
+        # self.main_widget = MainWidget(self)
+        self.main_widget = RecordMachineAudioWidget(self)
         self.error_manage_widget = ErrorManageWidget()
-        
-        self.widget_sequence = [self.main_widget, self.history_data_window, self.error_manage_widget, self.device_list_window, None]
+
+        self.widget_sequence = [
+            self.main_widget,
+            self.history_data_window,
+            self.error_manage_widget,
+            self.device_list_window,
+            None,
+        ]
         self.navigation_bar.navition_listview.clicked.connect(lambda index: self.swap_model_widget(index.row()))
 
         self.init_ui()
@@ -34,7 +43,7 @@ class CenterWidget(QWidget):
         self.create_layout()
 
     def create_right_layout(self):
-        self.error_information_textedit.setMaximumHeight(500)
+        self.error_information_textedit.setFixedHeight(200)
         error_information_box = self.create_rror_information_box()
         right_layout = QVBoxLayout()
         for i in range(len(self.widget_sequence)):
@@ -46,17 +55,17 @@ class CenterWidget(QWidget):
         right_layout.addWidget(error_information_box, alignment=Qt.AlignBottom)
 
         return right_layout
-    
+
     def create_navigation_bar_box(self):
         navigation_bar_box = QGroupBox()
         navigation_bar_box.setMaximumWidth(230)
         layout = QVBoxLayout()
-        layout.addWidget(self.navigation_bar) 
+        layout.addWidget(self.navigation_bar)
         navigation_bar_box.setLayout(layout)
         layout.setContentsMargins(0, 0, 0, 0)
 
         return navigation_bar_box
-    
+
     def create_rror_information_box(self):
         error_information_box = QGroupBox()
         error_information_box.setMaximumHeight(300)
@@ -66,7 +75,7 @@ class CenterWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         return error_information_box
-    
+
     def swap_model_widget(self, widget_sequence: int = 0):
         for i in range(len(self.widget_sequence)):
             if self.widget_sequence[i] == None:
@@ -75,12 +84,12 @@ class CenterWidget(QWidget):
                     login_window.on_exec()
                 continue
             if self.widget_sequence[i].isVisible():
-                if i== widget_sequence:
+                if i == widget_sequence:
                     continue
                 self.widget_sequence[i].hide()
             else:
                 if i == widget_sequence:
-                    self.widget_sequence[i].show()    
+                    self.widget_sequence[i].show()
 
     def create_layout(self):
         layout = QHBoxLayout()

@@ -15,7 +15,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("异音检测")
+        self.setWindowTitle("实时波形显示")
         self.center_widget = CenterWidget(self)
 
         self.setCentralWidget(self.center_widget)

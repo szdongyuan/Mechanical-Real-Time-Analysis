@@ -23,7 +23,7 @@ class DeviceListWindow(QDialog):
         self.api_combo_box = QComboBox()
         self.list_view = QListView()
         self.channel_list = QListView()
-        self.selected_channels = []   
+        self.selected_channels = []
 
         self.init_ui()
 
@@ -38,7 +38,7 @@ class DeviceListWindow(QDialog):
         device_layout = QHBoxLayout()
         device_layout.addLayout(device_list_layout)
         device_layout.addLayout(channel_layout)
-       
+
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setFixedHeight(20)
@@ -64,7 +64,7 @@ class DeviceListWindow(QDialog):
 
     def create_device_list_layout(self):
         sellected_device_label = QLabel("选择设备")
-        self.list_view.setSelectionMode(QAbstractItemView.SingleSelection )
+        self.list_view.setSelectionMode(QAbstractItemView.SingleSelection)
         self.list_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
         item_model = QStandardItemModel()
         current_api = self.api_combo_box.currentText()
@@ -80,7 +80,7 @@ class DeviceListWindow(QDialog):
         device_list_layout.addWidget(self.list_view)
 
         return device_list_layout
-    
+
     def create_channel_list_layout(self):
         channel_model = QStandardItemModel()
         self.channel_list.setModel(channel_model)
@@ -110,6 +110,7 @@ class DeviceListWindow(QDialog):
         btn_layout.setContentsMargins(30, 0, 30, 0)
 
         return btn_layout
+
     def update_api_device(self):
         item_model = QStandardItemModel()
         current_api = self.api_combo_box.currentText()
@@ -128,19 +129,21 @@ class DeviceListWindow(QDialog):
 
         max_channels = self.selected_device.get("max_input_channels", 0)
         self.channel_list.model().clear()
-        
+
         for channel in range(max_channels):
             self.channel_list.model().appendRow(QStandardItem(str(channel)))
 
     @staticmethod
     def save_device_data_to_json(device_name, device_chanels, selected_channels):
-        dir_path = 'D:/gqgit/new_project/ui/ui_config/'
+        dir_path = "D:/gqgit/new_project/ui/ui_config/"
         file_path = dir_path + "device_data.json"
-        device_data = {"device_name": device_name,
-                       "device_chanels": device_chanels, 
-                       "selected_channels": selected_channels}
+        device_data = {
+            "device_name": device_name,
+            "device_chanels": device_chanels,
+            "selected_channels": selected_channels,
+        }
         try:
-            with open(file_path, 'w') as file:
+            with open(file_path, "w") as file:
                 json.dump(device_data, file)
         except Exception as e:
             print("Error saving device data:", e)
@@ -149,13 +152,16 @@ class DeviceListWindow(QDialog):
         print("Selected device:", self.selected_device)
         selected_indices = self.channel_list.selectedIndexes()
         self.selected_channels = [idx.data() for idx in selected_indices]
-        self.save_device_data_to_json(self.selected_device["name"], self.selected_device["max_input_channels"], self.selected_channels)
-        print("Selected channels:", self.selected_channels)
+        self.save_device_data_to_json(
+            self.selected_device["name"], self.selected_device["max_input_channels"], self.selected_channels
+        )
+        # print("Selected channels:", self.selected_channels)
 
     def on_click_cancel_btn(self):
         self.selected_device = None
-    
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = DeviceListWindow()
     window.show()

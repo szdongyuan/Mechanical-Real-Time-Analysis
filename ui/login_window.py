@@ -74,7 +74,7 @@ class LoginWindow(QDialog):
 
         button_layout = QHBoxLayout()
         self.login_button = QPushButton(" 登  录 ")
-        self. login_button.clicked.connect(self.login_click)
+        self.login_button.clicked.connect(self.login_click)
         h_spacer_login_i = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
         button_layout.addItem(h_spacer_login_i)
         button_layout.addWidget(self.login_button)
@@ -97,10 +97,12 @@ class LoginWindow(QDialog):
         self.setLayout(layout)
         self.login_button.setDefault(True)
 
-        self.setStyleSheet(ui_style_const.qcombobox_stytle +
-                           ui_style_const.qpushbutton_stytle +
-                           ui_style_const.qlineedit_stytle +
-                           ui_style_const.qlabel_stytle)
+        self.setStyleSheet(
+            ui_style_const.login_qcombobox_stytle
+            + ui_style_const.qpushbutton_stytle
+            + ui_style_const.qlineedit_stytle
+            + ui_style_const.qlabel_stytle
+        )
 
     def access_add_account(self):
         if self.access_selection.currentText() != "管理员":
@@ -146,15 +148,17 @@ class LoginWindow(QDialog):
     @staticmethod
     def get_user_info_from_db(user_name):
         with DataManage(db_consts.DATABASE_PATH) as database:
-            query_code, query_data = database.query("users_table",
-                                                    ["user_name", "access_level", "password"],
-                                                    {"user_name": user_name})
+            query_code, query_data = database.query(
+                "users_table",
+                ["user_name", "access_level", "password"],
+                {"user_name": user_name},
+            )
         if query_code == error_code.OK and query_data:
             user_data = query_data[0]
             return {
                 "user_name": user_data[0],
                 "access_level": user_data[1],
-                "password": user_data[2]
+                "password": user_data[2],
             }
         else:
             return {}
@@ -227,10 +231,12 @@ class AddAccountWindow(QDialog):
 
         self.setLayout(layout)
 
-        self.setStyleSheet(ui_style_const.qcombobox_stytle +
-                           ui_style_const.qpushbutton_stytle +
-                           ui_style_const.qlineedit_stytle +
-                           ui_style_const.qlabel_stytle)
+        self.setStyleSheet(
+            ui_style_const.qcombobox_stytle
+            + ui_style_const.qpushbutton_stytle
+            + ui_style_const.qlineedit_stytle
+            + ui_style_const.qlabel_stytle
+        )
 
     def add_user_click(self):
         username = self.username_input.text()
@@ -253,13 +259,13 @@ class AddAccountWindow(QDialog):
             return False
         try:
             with DataManage(db_consts.DATABASE_PATH) as database:
-                result = database.query_matching_data([(username,)],
-                                                      "users_table", ["user_name"],
-                                                      ["user_id"])
+                result = database.query_matching_data([(username,)], "users_table", ["user_name"], ["user_id"])
                 if not result:
-                    insert_code, msg = database.insert_data_into_db("users_table",
-                                                                      db_consts.USERS_COLUMNS,
-                                                                      [(username, password, access_lvl)])
+                    insert_code, msg = database.insert_data_into_db(
+                        "users_table",
+                        db_consts.USERS_COLUMNS,
+                        [(username, password, access_lvl)],
+                    )
 
                     if insert_code == error_code.OK:
                         self.logger.info(f"Successful to create user {username}.")
@@ -331,10 +337,12 @@ class ChangePwdWindow(QDialog):
 
         self.setLayout(layout)
 
-        self.setStyleSheet(ui_style_const.qpushbutton_stytle + 
-                           ui_style_const.qlineedit_stytle +
-                           ui_style_const.qlabel_stytle +
-                           ui_style_const.qlabel_stytle)
+        self.setStyleSheet(
+            ui_style_const.qpushbutton_stytle
+            + ui_style_const.qlineedit_stytle
+            + ui_style_const.qlabel_stytle
+            + ui_style_const.qlabel_stytle
+        )
 
     def change_pwd_click(self):
         if not self.password_input.text():
@@ -352,12 +360,15 @@ class ChangePwdWindow(QDialog):
     def change_pwd_in_db(self, user_name, enc_pwd):
         try:
             with DataManage(db_consts.DATABASE_PATH) as database:
-                result = database.query_matching_data([(user_name,)], "users_table",
-                                                      ["user_name"], ["password"])
+                result = database.query_matching_data([(user_name,)], "users_table", ["user_name"], ["password"])
                 if result:
                     new_password_data = {"password": enc_pwd}
-                    update_code, msg = database.update_table_data("users_table", new_password_data,
-                                                                  {"user_name": user_name}, update_time=True)
+                    update_code, msg = database.update_table_data(
+                        "users_table",
+                        new_password_data,
+                        {"user_name": user_name},
+                        update_time=True,
+                    )
                     if update_code == error_code.OK:
                         self.logger.info("Password reset succeeded.")
                         return True
@@ -382,7 +393,7 @@ def encrypt_password(user_name, password):
 
 def get_mac_address():
     mac = uuid.getnode()
-    mac_address = ":".join(("%012x" % mac)[i:i + 2] for i in range(0, 12, 2))
+    mac_address = ":".join(("%012x" % mac)[i : i + 2] for i in range(0, 12, 2))
     return mac_address
 
 
