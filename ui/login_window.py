@@ -5,7 +5,7 @@ import uuid
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit
-from PyQt5.QtWidgets import QMessageBox, QPushButton, QSpacerItem, QSizePolicy, QVBoxLayout
+from PyQt5.QtWidgets import QMessageBox, QPushButton, QSizePolicy, QVBoxLayout
 
 from base.db_manager import DataManage
 from base.log_manager import LogManager
@@ -46,6 +46,7 @@ class LoginWindow(QDialog):
         self.access_selection.addItem("管理员")
         self.access_selection.addItem("工程师")
         self.access_selection.addItem("操作员")
+        self.access_selection.setFixedHeight(30)
         self.access_selection.currentTextChanged.connect(self.access_add_account)
         self.access_layout.addWidget(self.label_access)
         self.access_layout.addWidget(self.access_selection)
@@ -75,11 +76,9 @@ class LoginWindow(QDialog):
         button_layout = QHBoxLayout()
         self.login_button = QPushButton(" 登  录 ")
         self.login_button.clicked.connect(self.login_click)
-        h_spacer_login_i = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-        button_layout.addItem(h_spacer_login_i)
+        button_layout.addStretch()
         button_layout.addWidget(self.login_button)
-        h_spacer_login_ii = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-        button_layout.addItem(h_spacer_login_ii)
+        button_layout.addStretch()
 
         self.login_layout.addLayout(self.access_layout)
         self.login_layout.addLayout(user_layout)
@@ -321,11 +320,9 @@ class ChangePwdWindow(QDialog):
         button_layout = QHBoxLayout()
         change_pwd_button = QPushButton("修改密码")
         change_pwd_button.clicked.connect(self.change_pwd_click)
-        h_spacer_change_pwd_i = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-        h_spacer_change_pwd_ii = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-        button_layout.addItem(h_spacer_change_pwd_i)
+        button_layout.addStretch()
         button_layout.addWidget(change_pwd_button)
-        button_layout.addItem(h_spacer_change_pwd_ii)
+        button_layout.addStretch()
         button_layout.setContentsMargins(0, 10, 0, 0)
 
         layout.addWidget(self.info)

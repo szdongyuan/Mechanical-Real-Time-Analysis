@@ -64,7 +64,6 @@ class ErrorManageWidget(QWidget):
         return error_manage_table_layout
 
     def add_warning_data(self, audio_datas):
-        print(1111111111111111111111, audio_datas)
         for audio_data in audio_datas:
             (
                 warning_time,

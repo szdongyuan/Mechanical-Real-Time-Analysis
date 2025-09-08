@@ -1,10 +1,12 @@
 import sys
+import librosa
 
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QIcon
-from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QTableView, QHeaderView, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QTableView, QHeaderView
 
-from base.audio_data_manager import get_record_audio_data_from_db
+from base.audio_data_manager import get_record_audio_data_from_db, get_record_audio_data_path
+from base.player_audio import AudioPlayer
 
 
 class HistoryDataWindow(QDialog):
@@ -15,6 +17,9 @@ class HistoryDataWindow(QDialog):
         self.history_data_table.setIconSize(QSize(25, 25))
         self.history_data_model = CustomStandardItemModel(0, 6, [4])
         self.history_data_table.setModel(self.history_data_model)
+        self.paly_flag = False
+
+        self.player = None
 
         self.play_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/play.png")
         self.pause_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/pause.png")
@@ -32,9 +37,9 @@ class HistoryDataWindow(QDialog):
         self.history_data_table.verticalHeader().setDefaultSectionSize(40)
         self.history_data_table.setStyleSheet(
             """QTableView::item {
-                                                                    border-top: 1px solid rgb(130, 135, 144);
-                                                                    color: black;
-                                                                  }"""
+                    border-top: 1px solid rgb(130, 135, 144);
+                    color: black;
+            }"""
         )
         self.history_data_table.model().setHorizontalHeaderLabels(
             ["文件名称", "录制时间", "结束时间", "操作员", "备注", "操作"]
@@ -89,20 +94,47 @@ class HistoryDataWindow(QDialog):
 
     def on_cell_clicked(self, index):
         if index.column() == 5:
-            print("点击了操作列")
             item = self.history_data_model.item(index.row(), index.column())
             if item.flag:
-                print("播放")
+                if self.paly_flag:
+                    return
+                record_time = self.get_cell_content(index.row(), 1)
+                wave_file_path = get_record_audio_data_path(record_time)
+                print(wave_file_path)
+                wave_data = self.load_wave_data(wave_file_path)
+                self.player_wave_data(wave_data)
                 item.setIcon(self.pause_icon)
                 item.setText("暂停")
                 item.flag = False
+                self.paly_flag = True
             else:
-                print("暂停")
+                self.player.stop()
                 item.setIcon(self.play_icon)
                 item.setText("播放")
                 item.flag = True
+                self.paly_flag = False
             # 通知视图更新图标
             self.history_data_model.dataChanged.emit(index, index, [Qt.DecorationRole])
+
+    def get_cell_content(self, row, column):
+        item = self.history_data_model.item(row, column)
+        if item:
+            return item.text()
+        return None
+
+    def load_wave_data(self, wave_file_path):
+        wave_data = librosa.load(wave_file_path, sr=44100, mono=False)[0]
+        if len(wave_data.shape) == 2:
+            wave_data = wave_data.T
+        return wave_data
+
+    def player_wave_data(self, wave_data):
+        self.player = AudioPlayer(wave_data)
+        self.player.playback_finished.connect(self.on_playback_finished)
+        self.player.start()
+
+    def on_playback_finished(self):
+        print("播放完成")
 
 
 class CustomStandardItemModel(QStandardItemModel):

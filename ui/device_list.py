@@ -1,11 +1,13 @@
 import sys
 import json
+from datetime import datetime
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItem, QStandardItemModel
 from PyQt5.QtWidgets import QApplication, QAbstractItemView, QDialog, QHBoxLayout, QLabel, QListView, QFrame
-from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QComboBox
+from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QComboBox, QMessageBox
 
+from base.data_struct.data_deal_struct import DataDealStruct
 from base.sound_device_manager import get_device_info
 from ui.calibration_window import CalibrationWindow
 
@@ -14,6 +16,7 @@ class DeviceListWindow(QDialog):
 
     def __init__(self):
         super().__init__()
+        self.data_struct = DataDealStruct()
         self.device_type = "input"
         self.device_title = " —— 麦克风"
 
@@ -121,8 +124,50 @@ class DeviceListWindow(QDialog):
 
     def on_click_check_btn(self):
         if self.selected_device:
-            calibration_window = CalibrationWindow()
-            calibration_window.exec()
+            self.set_selected_channels()
+            if len(self.selected_channels) == 0:
+                QMessageBox.information(self, "提示", "请至少选择一个通道进行校准")
+                return
+            if self.about_device_checiked_info():
+                self.mic_channel_check()
+        else:
+            QMessageBox.warning(self, "提示", "请选择设备")
+
+    def about_device_checiked_info(self):
+        about_device_checiked_info = QMessageBox()
+        about_device_checiked_info.setWindowFlags(Qt.Dialog)
+        about_device_checiked_info.setWindowTitle("关于设备校准")
+        info_str = "您选择的设备共有%s个通道，本次校准将对通道%s进行校准。\n请确认是否继续？" % (
+            self.selected_device["max_input_channels"],
+            self.selected_channels,
+        )
+        about_device_checiked_info.setText(info_str)
+        about_device_checiked_info.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
+
+        if QMessageBox.Yes == about_device_checiked_info.exec():
+            return True
+        else:
+            return False
+
+    def mic_channel_check(self):
+        check_mic_result = {}
+        for channel in self.selected_channels:
+            QMessageBox.information(self, "提示", "开始校准通道：" + channel + "，请将校准源放置到待校准通道处")
+            calibration_window = CalibrationWindow(self.selected_device["max_input_channels"], int(channel))
+            check_result = calibration_window.exec()
+            check_mic_result["channel-%s_deviation_value" % channel] = check_result
+        check_mic_result["Datetime"] = datetime.now().strftime("%Y-%m-%d")
+        self.save_mic_check_result_to_json(check_mic_result)
+
+    @staticmethod
+    def save_mic_check_result_to_json(check_mic_result):
+        dir_path = "D:/gqgit/new_project/ui/ui_config/"
+        file_path = dir_path + "mic_check_data.json"
+        try:
+            with open(file_path, "w") as file:
+                json.dump(check_mic_result, file)
+        except Exception as e:
+            print("Error saving device data:", e)
 
     def on_select_item(self, index):
         self.selected_device = self.device_list[index.row()]
@@ -132,6 +177,10 @@ class DeviceListWindow(QDialog):
 
         for channel in range(max_channels):
             self.channel_list.model().appendRow(QStandardItem(str(channel)))
+
+    def set_selected_channels(self):
+        selected_indices = self.channel_list.selectedIndexes()
+        self.selected_channels = [idx.data() for idx in selected_indices]
 
     @staticmethod
     def save_device_data_to_json(device_name, device_chanels, selected_channels):
@@ -149,9 +198,8 @@ class DeviceListWindow(QDialog):
             print("Error saving device data:", e)
 
     def on_click_ok_btn(self):
-        print("Selected device:", self.selected_device)
-        selected_indices = self.channel_list.selectedIndexes()
-        self.selected_channels = [idx.data() for idx in selected_indices]
+        self.data_struct.channels_change_flag = True
+        self.set_selected_channels()
         self.save_device_data_to_json(
             self.selected_device["name"], self.selected_device["max_input_channels"], self.selected_channels
         )
@@ -159,6 +207,13 @@ class DeviceListWindow(QDialog):
 
     def on_click_cancel_btn(self):
         self.selected_device = None
+
+    def show(self):
+        if self.data_struct.record_flag:
+            self.channel_list.setEnabled(False)
+        else:
+            self.channel_list.setEnabled(True)
+        super().show()
 
 
 if __name__ == "__main__":

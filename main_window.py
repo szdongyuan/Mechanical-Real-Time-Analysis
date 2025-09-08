@@ -3,6 +3,7 @@ import sys
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenuBar, QStatusBar, QLabel
 
+from base.data_struct.data_deal_struct import DataDealStruct
 from ui.center_widget import CenterWidget
 
 
@@ -10,7 +11,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        
+        self.data_struct = DataDealStruct()
 
         self.init_ui()
 
@@ -30,12 +31,13 @@ class MainWindow(QMainWindow):
 
         self.setMenuBar(menu_bar)
 
-
     def show_statusbar_layout(self):
         # create status bar, show the user data and device data, and close drag status bar modify window size
         self.user_label = QLabel()
         self.user_label.setAlignment(Qt.AlignLeft)
-        self.user_label.setText("当前用户：{name}  用户等级：{level}".format(name=self.user_name, level=self.access_lvl))
+        self.user_label.setText(
+            "当前用户：{name}  用户等级：{level}".format(name=self.user_name, level=self.access_lvl)
+        )
         self.device_label = QLabel()
         device_txt = "麦克风：{mic}  扬声器：{speaker}".format(mic=self.mic["name"], speaker=self.speaker["name"])
         self.device_label.setText(device_txt)
@@ -50,11 +52,11 @@ class MainWindow(QMainWindow):
         self.center_widget.main_widget.audio_manager.stop_recording()
         self.center_widget.main_widget.audio_manager.quit()
         self.center_widget.main_widget.audio_manager.wait()
-        self.center_widget.main_widget.recording = False
+        self.data_struct.record_flag = False
         event.accept()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()

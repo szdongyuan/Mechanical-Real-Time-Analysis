@@ -3,12 +3,11 @@ import sys
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox
 
+from base.data_struct.data_deal_struct import DataDealStruct
 from ui.navigation_bar import NavigationBar
 from ui.historical_data import HistoryDataWindow
 from ui.device_list import DeviceListWindow
 from ui.error_information_textedit import ErrorInformationTextEdit
-
-# from ui.test1 import MainWidget
 from ui.record_machine_audio_widget import RecordMachineAudioWidget
 from ui.error_manage_widget import ErrorManageWidget
 from ui.login_window import LoginWindow
@@ -17,6 +16,7 @@ from ui.login_window import LoginWindow
 class CenterWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.data_struct = DataDealStruct()
 
         self.history_data_window = HistoryDataWindow()
         self.device_list_window = DeviceListWindow()
@@ -34,10 +34,9 @@ class CenterWidget(QWidget):
             None,
         ]
         self.navigation_bar.navition_listview.clicked.connect(lambda index: self.swap_model_widget(index.row()))
-
         self.init_ui()
-        self.showMaximized()
         self.swap_model_widget()
+        self.showMaximized()
 
     def init_ui(self):
         self.create_layout()
@@ -102,7 +101,7 @@ class CenterWidget(QWidget):
         self.main_widget.audio_manager.stop_recording()
         self.main_widget.audio_manager.quit()
         self.main_widget.audio_manager.wait()
-        self.main_widget.recording = False
+        self.data_struct.record_flag = False
         event.accept()
 
 
