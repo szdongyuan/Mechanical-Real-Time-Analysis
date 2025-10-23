@@ -37,12 +37,47 @@ qlineedit_stytle = """
 
 qcombobox_stytle = """
             QComboBox {
-                border: 1px solid rgb(173, 173, 173);
-                background-color: rgb(225, 225, 225);
-                font-family: 'SimSun';
+                background-color: rgb(255, 255, 255);
+                border: None;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 12px;
+
+                border: None;
+                background: transparent;
+            }
+            QComboBox::down-arrow {
+                image: url(./ui/ui_pic/shanglajiantou.png);
+                width: 12px;
+                height: 12px;
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+            }
+        """
+
+login_qcombobox_stytle = """
+            QComboBox {
+                border: 1px solid rgb(122, 122, 122);
+                background-color: rgb(255, 255, 255);
                 font-size: 20px;
-                border-radius: 3px;
-                padding: 3px;
+                border: None;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 12px;
+
+                border: None;
+                background: transparent;
+            }
+            QComboBox::down-arrow {
+                image: url(./ui/ui_pic/shanglajiantou.png);
+                width: 12px;
+                height: 12px;
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
             }
         """
 

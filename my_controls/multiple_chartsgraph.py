@@ -5,14 +5,13 @@ from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFr
 
 
 class MultipleChartsGraph(QWidget):
-    def __init__(self, channels=1):
+    def __init__(self):
         super().__init__()
 
         self.wavefrom_list = list()
         self.stftfrom_list = list()
         self.curve_line_list = list()
         self.spec_im_list = list()
-        self.channel_light_list = list()
 
         self.chart_layout = QHBoxLayout()
         self.setLayout(self.chart_layout)
@@ -25,7 +24,7 @@ class MultipleChartsGraph(QWidget):
         for channel in range(channels):
             waveform_plot = FigureCanvas(plt.figure(constrained_layout=True))
             stft_plot = FigureCanvas(plt.figure(constrained_layout=True))
-            input_title_layout = self.create_wavefrom_title(channel)
+            input_title = self.create_wavefrom_title(channel)
             sv_label = QLabel(" SV Intensity Graph %s" % (channel + 1))
 
             self.wavefrom_list.append(waveform_plot)
@@ -35,7 +34,7 @@ class MultipleChartsGraph(QWidget):
             hertical_line.setFrameShape(QFrame.HLine)
 
             layout = QVBoxLayout()
-            layout.addLayout(input_title_layout)
+            layout.addWidget(input_title)
             layout.addWidget(self.wavefrom_list[channel], 1)
             layout.addWidget(hertical_line)
             layout.addWidget(sv_label, alignment=Qt.AlignLeft)
@@ -49,30 +48,9 @@ class MultipleChartsGraph(QWidget):
         self.chart_layout.setSpacing(0)
 
     def create_wavefrom_title(self, channel):
-        title = QLabel("INPUT %s" % (channel + 1))
-        green_light = QLabel()
-        red_light = QLabel()
-        self.set_light_color(red_light, "gray")
-        self.set_light_color(green_light, "gray")
+        title = QLabel(" INPUT %s" % (channel + 1))
 
-        self.store_channel_light(red_light, green_light)
-
-        title_layout = QHBoxLayout()
-        title_layout.addWidget(title)
-        title_layout.addStretch()
-        title_layout.addWidget(green_light)
-        title_layout.addWidget(red_light)
-        title_layout.setContentsMargins(10, 0, 10, 0)
-
-        return title_layout
-
-    def store_channel_light(self, red_light, green_light):
-        channel_light_dict = {"red_light": red_light, "green_light": green_light}
-        self.channel_light_list.append(channel_light_dict)
-
-    def set_light_color(self, light, color):
-        light.setFixedSize(20, 20)
-        light.setStyleSheet(f"background-color: {color}; border-radius: 10px;")
+        return title
 
     def del_layout(self, old_layout=None):
         if old_layout is not None:
@@ -121,14 +99,6 @@ class MultipleChartsGraph(QWidget):
             self.wavefrom_list[channel].figure.clear()
             self.stftfrom_list[channel].figure.clear()
         self.curve_line_list = list()
-
-    def set_warning_light(self, channel, flag):
-        if flag:
-            self.set_light_color(self.channel_light_list[channel]["red_light"], "red")
-            self.set_light_color(self.channel_light_list[channel]["green_light"], "gray")
-        else:
-            self.set_light_color(self.channel_light_list[channel]["green_light"], "green")
-            self.set_light_color(self.channel_light_list[channel]["red_light"], "gray")
 
 
 if __name__ == "__main__":

@@ -23,9 +23,11 @@ class LogManager(object):
                 has_rotating_handler = True
                 break
         if not has_rotating_handler:
-            handler = ConcurrentRotatingFileHandler(filename=log_info.get("log_name", LOG_DIR + "main.log"),
-                                                    maxBytes=log_info.get("max_size", 1 << 20),
-                                                    backupCount=log_info.get("backup_count", 10))
+            handler = ConcurrentRotatingFileHandler(
+                filename=log_info.get("log_name", LOG_DIR + "main.log"),
+                maxBytes=log_info.get("max_size", 1 << 20),
+                backupCount=log_info.get("backup_count", 10),
+            )
             logger.setLevel(level=logging.INFO)
             handler.setLevel(logging.INFO)
             formatter = logging.Formatter(log_info.get("log_format"))

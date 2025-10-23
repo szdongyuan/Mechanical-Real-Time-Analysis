@@ -7,7 +7,7 @@ from base.data_struct.data_deal_struct import DataDealStruct
 from ui.navigation_bar import NavigationBar
 from ui.historical_data import HistoryDataWindow
 from ui.device_list import DeviceListWindow
-from ui.error_information_textedit import ErrorInformationTextEdit
+from ui.system_information_textedit import SysInformationTextEdit, log_model, log_controller
 from ui.record_machine_audio_widget import RecordMachineAudioWidget
 from ui.error_manage_widget import ErrorManageWidget
 from ui.login_window import LoginWindow
@@ -20,7 +20,8 @@ class CenterWidget(QWidget):
 
         self.history_data_window = HistoryDataWindow()
         self.device_list_window = DeviceListWindow()
-        self.error_information_textedit = ErrorInformationTextEdit()
+        self.sys_information_textedit = SysInformationTextEdit()
+        self.sys_information_textedit.set_model(log_model)
         self.navigation_bar = NavigationBar()
         # self.main_widget = MainWidget(self)
         self.main_widget = RecordMachineAudioWidget(self)
@@ -42,7 +43,7 @@ class CenterWidget(QWidget):
         self.create_layout()
 
     def create_right_layout(self):
-        self.error_information_textedit.setFixedHeight(200)
+        self.sys_information_textedit.setFixedHeight(330)
         error_information_box = self.create_rror_information_box()
         right_layout = QVBoxLayout()
         for i in range(len(self.widget_sequence)):
@@ -67,9 +68,10 @@ class CenterWidget(QWidget):
 
     def create_rror_information_box(self):
         error_information_box = QGroupBox()
-        error_information_box.setMaximumHeight(300)
+        error_information_box.setMaximumHeight(500)
+        # error_information_box.setFixedHeight(500)
         layout = QVBoxLayout()
-        layout.addWidget(self.error_information_textedit)
+        layout.addWidget(self.sys_information_textedit)
         error_information_box.setLayout(layout)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -89,6 +91,10 @@ class CenterWidget(QWidget):
             else:
                 if i == widget_sequence:
                     self.widget_sequence[i].show()
+        # 记录导航切换日志
+        names = ["实时监测", "历史数据", "报警管理", "设备列表", "用户设置"]
+        if 0 <= widget_sequence < len(names):
+            log_controller.info(f"当前已切换到{names[widget_sequence]}")
 
     def create_layout(self):
         layout = QHBoxLayout()
@@ -96,6 +102,8 @@ class CenterWidget(QWidget):
         layout.addWidget(navigation_bar_box)
         layout.addLayout(self.create_right_layout())
         self.setLayout(layout)
+        # 程序启动日志
+        log_controller.info("程序启动")
 
     def closeEvent(self, event):
         self.main_widget.audio_manager.stop_recording()

@@ -1,9 +1,11 @@
 import sys
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMenuBar, QStatusBar, QLabel
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMenuBar, QStatusBar, QLabel, QAction
 
 from base.data_struct.data_deal_struct import DataDealStruct
+from consts.model_consts import DEFAULT_DIR
+from ui.ai.ai_analysis_config_mvc import AIConfigView, AIConfigController, AIModelStore
 from ui.center_widget import CenterWidget
 
 
@@ -25,11 +27,26 @@ class MainWindow(QMainWindow):
     def set_menu_bar(self):
         menu_bar = QMenuBar()
         function_menu = menu_bar.addMenu("功能")
+        ai_analysis_action = QAction("AI 分析", self)
+        ai_analysis_action.triggered.connect(self.show_ai_analysis_window)
+        function_menu.addAction(ai_analysis_action)
         hardware_menu = menu_bar.addMenu("硬件")
         user_menu = menu_bar.addMenu("用户")
         help_menu = menu_bar.addMenu("帮助")
 
         self.setMenuBar(menu_bar)
+
+    def show_ai_analysis_window(self):
+        json_path = DEFAULT_DIR + "ui/ui_config/models.json"
+        model_store = AIModelStore.from_json_or_default(json_path)
+
+        view = AIConfigView()
+        controller = AIConfigController(model_store, view)  # noqa: F841 (保持引用)
+
+        view.resize(420, 240)
+        if view.exec_() == view.Accepted:
+            result = view.get_result_data()  # 字典结果
+            print(result)
 
     def show_statusbar_layout(self):
         # create status bar, show the user data and device data, and close drag status bar modify window size

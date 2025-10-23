@@ -23,19 +23,14 @@ class SoundcardAudioProcessor(object):
         sr = stimulus_dict.get("sr")
         rec_data = sd.playrec(prolong_data, samplerate=sr, channels=1, blocking=True).T[0]
         align_frames = self.calculate_alignment(prolong_data, rec_data)
-        aligned_data = rec_data[align_frames: align_frames + len(data)]
+        aligned_data = rec_data[align_frames : align_frames + len(data)]
         wavfile.write(recording_path, sr, aligned_data.astype("float32"))
         return error_code.OK, aligned_data
 
     @staticmethod
-    def sd_play(stimulus_params):
+    def sd_play(wave_data, sr):
         try:
-            data = stimulus_params.get("data") * stimulus_params.get("amplitude")
-            print(stimulus_params.get("amplitude"))
-            print(data)
-            sr = stimulus_params.get("sr")
-            blocking = stimulus_params.get("blocking", True)
-            sd.play(data, samplerate=sr, blocking=blocking)
+            sd.play(wave_data, samplerate=sr)
             return error_code.OK, "play successfully"
         except Exception as e:
             err_msg = "Failed to play audio. [%s]" % (str(e)[:50])
@@ -48,27 +43,31 @@ class SoundcardAudioProcessor(object):
         channels = recorded_dict.get("channels", 1)
         blocking = recorded_dict.get("blocking", True)
         prolong_frames = recorded_dict.get("prolong_frames", 0)
-        recorded_data = sd.rec(frames=num_frames, samplerate=sample_rate, channels=channels, blocking=blocking).T[0]
+        checked_channel = recorded_dict.get("checked_channel", 0)
+        recorded_data = sd.rec(frames=num_frames, samplerate=sample_rate, channels=channels, blocking=blocking).T[
+            checked_channel
+        ]
         if prolong_frames > 0:
             recorded_data = recorded_data[prolong_frames:]
 
         return error_code.OK, recorded_data
 
-    def initialize_audio_processes(self, record_dict: dict, stimulus_dict: dict,
-                                   mic, speaker, recording_path: str = "recording.wav"):
+    def initialize_audio_processes(
+        self, record_dict: dict, stimulus_dict: dict, mic, speaker, recording_path: str = "recording.wav"
+    ):
         """
-            Initialize audio processes, including mic and speaker.
-            Args:
-                record_dict: dict
-                    A dictionary of recording parameters.
-                stimulus_dict: dict
-                    A dictionary of stimulus parameters.
-                stimulus_path: str
-                    The save path of stimulus signal.
-                recording_path: str
-                    The save path of recording signal.
-            Returns:
-                A tuple containing the status code and message.
+        Initialize audio processes, including mic and speaker.
+        Args:
+            record_dict: dict
+                A dictionary of recording parameters.
+            stimulus_dict: dict
+                A dictionary of stimulus parameters.
+            stimulus_path: str
+                The save path of stimulus signal.
+            recording_path: str
+                The save path of recording signal.
+        Returns:
+            A tuple containing the status code and message.
         """
         if not isinstance(record_dict, dict) or not record_dict:
             self.logger.warning("The record_dict is empty or invalid.")
@@ -87,12 +86,12 @@ class SoundcardAudioProcessor(object):
     @staticmethod
     def speaker_worker(stimulus_params: dict, speaker):
         """
-            Play the stimulus audio.
-            Args:
-                stimulus_params: dict
-                    A dictionary containing audio data and sampling rate.
-            Returns:
-                A tuple containing the status code and message.
+        Play the stimulus audio.
+        Args:
+            stimulus_params: dict
+                A dictionary containing audio data and sampling rate.
+        Returns:
+            A tuple containing the status code and message.
         """
         try:
             data = stimulus_params.get("data") * stimulus_params.get("amplitude")
@@ -106,18 +105,18 @@ class SoundcardAudioProcessor(object):
 
     def mic_worker(self, record_params: dict, stimulus_params: dict, recording_path: str, mic):
         """
-            Record audio and align it with the stimulus audio, save audio data as wav.
-            Args:
-                record_params: dict
-                    A dictionary of recording parameters.
-                stimulus_params: dict
-                    A dictionary of stimulus parameters.
-                stimulus_path: str
-                    The save path of stimulus signal.
-                recording_path: str
-                    The save path of recording signal.
-            Returns:
-                A tuple containing the status code and message.
+        Record audio and align it with the stimulus audio, save audio data as wav.
+        Args:
+            record_params: dict
+                A dictionary of recording parameters.
+            stimulus_params: dict
+                A dictionary of stimulus parameters.
+            stimulus_path: str
+                The save path of stimulus signal.
+            recording_path: str
+                The save path of recording signal.
+        Returns:
+            A tuple containing the status code and message.
         """
         try:
             num_frames = record_params.get("num_frames")
@@ -128,7 +127,7 @@ class SoundcardAudioProcessor(object):
             stimulus_data = np.array(stimulus_params.get("data") * stimulus_params.get("amplitude"))
             align_frames = self.calculate_alignment(stimulus_data, recorded_data)
             if align_frames < record_params.get("prolong_frames"):
-                aligned_data = recorded_data[align_frames: align_frames + len(stimulus_data)]
+                aligned_data = recorded_data[align_frames : align_frames + len(stimulus_data)]
                 wavfile.write(recording_path, sr, aligned_data.astype("float32"))
                 self.logger.info("Recording and stimulus saved.")
                 return error_code.OK, "Recording and stimulus saved."
@@ -143,11 +142,11 @@ class SoundcardAudioProcessor(object):
     @staticmethod
     def ensure_directory_exists(save_path: str):
         """
-            Ensure that the directory where the save path resides exists.
-            Args:
-                save_path: str
-                    The save path of audio signals.
-            Returns:
+        Ensure that the directory where the save path resides exists.
+        Args:
+            save_path: str
+                The save path of audio signals.
+        Returns:
         """
         directory = os.path.dirname(save_path)
         if directory and not os.path.exists(directory):
@@ -156,14 +155,14 @@ class SoundcardAudioProcessor(object):
     @staticmethod
     def calculate_alignment(stimulus_signal, recorded_signal):
         """
-            Args:
-                stimulus_signal: np.ndarray
-                    The stimulus audio signal.
-                recorded_signal: np.ndarray
-                    The recorded audio signal.
-            Returns:
-                align_frames: int
-                    The index of the alignment frames.
+        Args:
+            stimulus_signal: np.ndarray
+                The stimulus audio signal.
+            recorded_signal: np.ndarray
+                The recorded audio signal.
+        Returns:
+            align_frames: int
+                The index of the alignment frames.
         """
         corr = signal.correlate(recorded_signal, stimulus_signal)
         align_frames = np.argmax(np.abs(corr)) - len(stimulus_signal) + 1
@@ -171,12 +170,12 @@ class SoundcardAudioProcessor(object):
 
     def start_process(self, process):
         """
-             Start the given process.
-            Args:
-                process: multiprocessing.Process
-                    The process to start.
-            Returns:
-                A tuple containing the status code and message.
+         Start the given process.
+        Args:
+            process: multiprocessing.Process
+                The process to start.
+        Returns:
+            A tuple containing the status code and message.
         """
         try:
             process.start()
@@ -189,12 +188,12 @@ class SoundcardAudioProcessor(object):
 
     def join_process(self, process):
         """
-            Wait for the given process to finish.
-            Args:
-                process: multiprocessing.Process
-                    The process to wait for.
-            Returns:
-                A tuple containing the status code and message.
+        Wait for the given process to finish.
+        Args:
+            process: multiprocessing.Process
+                The process to wait for.
+        Returns:
+            A tuple containing the status code and message.
         """
         try:
             process.join()

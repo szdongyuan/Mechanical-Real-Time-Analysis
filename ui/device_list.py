@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QComboBox, QMessageBox
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.sound_device_manager import get_device_info
 from ui.calibration_window import CalibrationWindow
+from ui.system_information_textedit import log_controller
 
 
 class DeviceListWindow(QDialog):
@@ -171,6 +172,7 @@ class DeviceListWindow(QDialog):
 
     def on_select_item(self, index):
         self.selected_device = self.device_list[index.row()]
+        log_controller.info(f"已选择硬件{self.selected_device['name']}")
 
         max_channels = self.selected_device.get("max_input_channels", 0)
         self.channel_list.model().clear()
@@ -204,6 +206,7 @@ class DeviceListWindow(QDialog):
             self.selected_device["name"], self.selected_device["max_input_channels"], self.selected_channels
         )
         # print("Selected channels:", self.selected_channels)
+        log_controller.info(f"选择硬件{self.selected_device['name']}")
 
     def on_click_cancel_btn(self):
         self.selected_device = None
