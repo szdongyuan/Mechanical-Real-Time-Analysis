@@ -1,9 +1,11 @@
 import json
 
+from consts.running_consts import DEFAULT_DIR
+
 
 def load_devices_data():
     try:
-        config_file = "D:/gqgit/new_project/ui/ui_config/device_data.json"
+        config_file = DEFAULT_DIR + "ui/ui_config/device_data.json"
         with open(config_file, "r") as f:
             default_config = json.load(f)
             device_name = default_config.get("device_name")

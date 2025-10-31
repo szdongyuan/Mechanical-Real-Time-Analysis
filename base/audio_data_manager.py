@@ -6,13 +6,20 @@ from scipy.io import wavfile
 
 from base.db_manager import DataManage
 from base.get_mac_address import get_mac_address
+from base.log_manager import LogManager
 from consts import db_consts
+
+
+logger = LogManager.set_log_handler("db_core")
 
 
 def save_audio_data(record_audio_data, sameple_rate, file_name):
     print("save_audio_data")
-    deta = record_audio_data.copy().T.astype(np.float32)
-    wavfile.write(file_name, sameple_rate, deta)
+    try:
+        deta = record_audio_data.copy().T.astype(np.float32)
+        wavfile.write(file_name, sameple_rate, deta)
+    except Exception as e:
+        logger.error(f"save_audio_data failed: {e}")
 
 
 def add_record_audio_data_to_db(
@@ -24,9 +31,9 @@ def add_record_audio_data_to_db(
     with DataManage(db_consts.DATABASE_PATH) as db:
         code, msg = db.insert_data_into_db("record_audio_data_table", columns, [data])
         if code == 0:
-            print("add_record_audio_data_to_db success")
+            logger.info("add_record_audio_data_to_db success")
         else:
-            print("add_record_audio_data_to_db failed")
+            logger.error("add_record_audio_data_to_db failed")
             # print(msg)
 
 
@@ -35,10 +42,10 @@ def get_record_audio_data_from_db():
         # print(db_consts.AUDIO_COLUMNS)
         code, result = db.query("record_audio_data_table", db_consts.AUDIO_COLUMNS)
         if code == 0:
-            print("get_record_audio_data_from_db success")
+            logger.info("get_record_audio_data_from_db success")
             return result
         else:
-            print("get_record_audio_data_from_db failed")
+            logger.error("get_record_audio_data_from_db failed")
             return None
 
 
@@ -47,10 +54,10 @@ def get_warning_audio_data_from_db():
         # print(db_consts.AUDIO_COLUMNS)
         code, result = db.query("warning_audio_data_table", db_consts.WARNING_COLUMNS)
         if code == 0:
-            print("get_warning_audio_data_from_db success")
+            logger.info("get_warning_audio_data_from_db success")
             return result
         else:
-            print("get_warning_audio_data_from_db failed")
+            logger.error("get_warning_audio_data_from_db failed")
             return None
 
 

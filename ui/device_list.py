@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QComboBox, QMessageBox
 
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.sound_device_manager import get_device_info
+from consts.running_consts import DEFAULT_DIR
 from ui.calibration_window import CalibrationWindow
 from ui.system_information_textedit import log_controller
 
@@ -162,8 +163,8 @@ class DeviceListWindow(QDialog):
 
     @staticmethod
     def save_mic_check_result_to_json(check_mic_result):
-        dir_path = "D:/gqgit/new_project/ui/ui_config/"
-        file_path = dir_path + "mic_check_data.json"
+        # dir_path = "D:/gqgit/new_project/ui/ui_config/"
+        file_path = DEFAULT_DIR + "ui/ui_config/mic_check_data.json"
         try:
             with open(file_path, "w") as file:
                 json.dump(check_mic_result, file)
@@ -186,8 +187,9 @@ class DeviceListWindow(QDialog):
 
     @staticmethod
     def save_device_data_to_json(device_name, device_chanels, selected_channels):
-        dir_path = "D:/gqgit/new_project/ui/ui_config/"
-        file_path = dir_path + "device_data.json"
+        selected_channels.sort()
+        # dir_path = "D:/gqgit/new_project/ui/ui_config/"
+        file_path = DEFAULT_DIR + "ui/ui_config/device_data.json"
         device_data = {
             "device_name": device_name,
             "device_chanels": device_chanels,

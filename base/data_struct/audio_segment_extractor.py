@@ -37,6 +37,7 @@ class AudioSegmentExtractor:
         self._write_index_ref = None  # 环形缓冲区写入位置索引
         self._extracted_segments: Optional[np.ndarray] = None
         self._lock = threading.Lock()
+        self._on_extracted_callback = None  # 可选回调：在每次提取完成后触发
         
     def set_audio_source(self, audio_data_arr: List[np.ndarray], write_index_ref=None):
         """
@@ -83,6 +84,14 @@ class AudioSegmentExtractor:
         while self._is_running:
             try:
                 self._extract_segments()
+                # 在提取完成后触发回调（如已设置）
+                if self._on_extracted_callback is not None:
+                    segments = self.get_extracted_segments()
+                    if segments is not None:
+                        try:
+                            self._on_extracted_callback(segments, self.sampling_rate)
+                        except Exception as e:
+                            print(f"提取回调执行错误: {e}")
                 time.sleep(self.extract_interval)
             except Exception as e:
                 print(f"音频片段提取出错: {e}")
@@ -138,6 +147,13 @@ class AudioSegmentExtractor:
             if self._extracted_segments is not None:
                 return self._extracted_segments.copy()
             return None
+
+    def set_on_extracted_callback(self, callback):
+        """
+        设置在每次提取完成后调用的回调函数。
+        回调签名: callback(segments: np.ndarray, sampling_rate: int) -> None
+        """
+        self._on_extracted_callback = callback
     
     def get_segment_info(self) -> dict:
         """

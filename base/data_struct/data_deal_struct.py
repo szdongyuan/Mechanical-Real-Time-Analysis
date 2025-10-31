@@ -20,6 +20,9 @@ class DataDealStruct(object):
             self.audio_data_queue = None
             self.audio_data_arr_i = None
             self.audio_data_arr_ii = None
+
+            # 写入-读取一致性 epoch（偶数表示稳定快照可读，奇数表示写入中）
+            self.epoch = 0
             
             # 音频片段提取器相关属性（遵循开闭原则，扩展而非修改）
             self.segment_extractor = None

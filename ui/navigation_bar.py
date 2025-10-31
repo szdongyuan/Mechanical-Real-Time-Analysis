@@ -4,6 +4,8 @@ from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QIcon, QStandardItem
 from PyQt5.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QListView
 
+from consts.running_consts import DEFAULT_DIR
+
 class NavigationBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -40,11 +42,11 @@ class NavigationBar(QWidget):
         self.setLayout(layout)
 
     def add_item_to_nevigation_listview(self):  
-        self.add_item(" 实时监测", "D:/gqgit/new_project/ui/ui_pic/sequence_pic/shishijiance.png")
-        self.add_item(" 历史数据", "D:/gqgit/new_project/ui/ui_pic/sequence_pic/data.png")
-        self.add_item(" 报警管理", "D:/gqgit/new_project/ui/ui_pic/sequence_pic/jinggao.png")
-        self.add_item(" 设备列表", "D:/gqgit/new_project/ui/ui_pic/sequence_pic/shebei.png")
-        self.add_item(" 用户设置", "D:/gqgit/new_project/ui/ui_pic/sequence_pic/yonghu.png")
+        self.add_item(" 实时监测", DEFAULT_DIR + "ui/ui_pic/sequence_pic/shishijiance.png")
+        self.add_item(" 历史数据", DEFAULT_DIR + "ui/ui_pic/sequence_pic/data.png")
+        self.add_item(" 报警管理", DEFAULT_DIR + "ui/ui_pic/sequence_pic/jinggao.png")
+        self.add_item(" 设备列表", DEFAULT_DIR + "ui/ui_pic/sequence_pic/shebei.png")
+        self.add_item(" 用户设置", DEFAULT_DIR + "ui/ui_pic/sequence_pic/yonghu.png")
         self.navition_listview.setCurrentIndex(self.navition_listview.model().index(0, 0))
 
     def add_item(self, text:str, icon_url:str):

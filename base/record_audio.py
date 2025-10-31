@@ -13,7 +13,7 @@ class AudioDataManager(QThread):
     def __init__(self):
         super().__init__()
         self.data_struct = DataDealStruct()
-        self.stream = None
+        # self.stream = None
         self.sampling_rate = 44100
         self.channels = None
         self.selected_channels = None
@@ -31,54 +31,56 @@ class AudioDataManager(QThread):
         count = 0
 
         def audio_callback(in_data, frames, t, status):
+            # 开始一轮写入：epoch 置为奇数（写入中），并限制不超过 10000
+            try:
+                if self.data_struct.epoch >= 10000:
+                    self.data_struct.epoch = 1
+                else:
+                    self.data_struct.epoch += 1
+            except Exception:
+                pass
             if status:
                 print(f"Audio error: {status}")
                 print(time.strftime("%Y%m%d_%H%M%S", time.localtime()))
             # 更新音频数据
             # print(frames)
             data = in_data.T
-            # self.lock.acquire()
-            # for i, ch in enumerate(selected_channels):
-            #     # self.audio_data[i, :-frames] = self.audio_data[i, frames:]
-            #     # self.audio_data[i, -frames:] = data[ch]
-            #     # self.audio_data[i].extend(data[ch])
-            #     self.data_struct.audio_data_arr[i].extend(data[ch])
-            #     # print(type(self.data_struct.audio_data_arr[i]))
 
-            #     # if i % 2 == 0:
-            #     #     self.data_struct.save_flag=False
-            #     # else:
-            #     #     self.data_struct.save_flag=True
+            for i, ch in enumerate(self.selected_channels):
+                # 获取当前通道的环形缓冲与长度
+                ring_buffer = self.data_struct.audio_data_arr[i]
+                buffer_len = int(ring_buffer.shape[0])
+                if buffer_len <= 0:
+                    continue
 
-            # # self.signal_for_update.emit(self.audio_data)
-            # self.lock.release()
-            with self.lock:  # 使用 with 语句自动获取和释放锁
-                for i, ch in enumerate(self.selected_channels):
-                    # 获取当前通道的环形缓冲与长度
-                    ring_buffer = self.data_struct.audio_data_arr[i]
-                    buffer_len = int(ring_buffer.shape[0])
-                    if buffer_len <= 0:
-                        continue
+                # 读取并规范写入位置（确保落在 [0, buffer_len)）
+                write_idx = int(self.data_struct.write_index[i]) % buffer_len
 
-                    # 读取并规范写入位置（确保落在 [0, buffer_len)）
-                    write_idx = int(self.data_struct.write_index[i]) % buffer_len
+                # 将新数据按两段写入（末尾段 + 开头段）
+                tail_space = buffer_len - write_idx
+                if frames <= tail_space:
+                    # 全部写入尾段
+                    ring_buffer[write_idx:write_idx + frames] = data[ch]
+                    write_idx = (write_idx + frames) % buffer_len
+                else:
+                    # 分段写入
+                    first_len = tail_space
+                    second_len = frames - first_len
+                    ring_buffer[write_idx:buffer_len] = data[ch][:first_len]
+                    ring_buffer[0:second_len] = data[ch][first_len:]
+                    write_idx = second_len % buffer_len
 
-                    # 将新数据按两段写入（末尾段 + 开头段）
-                    tail_space = buffer_len - write_idx
-                    if frames <= tail_space:
-                        # 全部写入尾段
-                        ring_buffer[write_idx:write_idx + frames] = data[ch]
-                        write_idx = (write_idx + frames) % buffer_len
-                    else:
-                        # 分段写入
-                        first_len = tail_space
-                        second_len = frames - first_len
-                        ring_buffer[write_idx:buffer_len] = data[ch][:first_len]
-                        ring_buffer[0:second_len] = data[ch][first_len:]
-                        write_idx = second_len % buffer_len
-
-                    # 回写更新后的写入位置
-                    self.data_struct.write_index[i] = write_idx
+                # 回写更新后的写入位置
+                self.data_struct.write_index[i] = write_idx
+            
+            # 本轮写入完成：epoch 置为偶数（稳定态），并限制不超过 10000
+            try:
+                if self.data_struct.epoch >= 10000:
+                    self.data_struct.epoch = 0
+                else:
+                    self.data_struct.epoch += 1
+            except Exception:
+                pass
 
         try:
             self.ctx.start_stream(
@@ -95,7 +97,7 @@ class AudioDataManager(QThread):
             print(f"Failed to start audio stream: {e}")
 
     def stop_recording(self):
-        if self.stream and self.stream.active:
+        if self.ctx and self.ctx.stream.active:
             self.ctx.stream.stop()
             self.ctx = None
         self.quit()

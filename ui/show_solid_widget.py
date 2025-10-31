@@ -12,6 +12,9 @@ import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 
 
+from consts.running_consts import DEFAULT_DIR
+
+
 # -----------------------------
 # Model 层
 # -----------------------------
@@ -429,7 +432,7 @@ def _parse_cli_path() -> Optional[str]:
 def main() -> None:
     app = QtWidgets.QApplication(sys.argv)
     # step_path = _parse_cli_path()
-    step_path = "D:/gqgit/new_project/烟草吸盘治具（高速线）.STEP"
+    step_path = DEFAULT_DIR + "烟草吸盘治具（高速线）.STEP"
     w = ShowSolidWindow(step_path)
     w.show()
     sys.exit(app.exec_())

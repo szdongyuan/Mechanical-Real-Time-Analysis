@@ -14,12 +14,14 @@ from PyQt5.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
+    QLineEdit,
     QListWidget,
     QPushButton,
     QLabel,
     QVBoxLayout,
     QWidget,
 )
+from ui.ai.register_ai_model import ModelManagerApp
 
 
 # ========================= Model ========================= #
@@ -123,31 +125,22 @@ class AIModelStore:
         self,
         current_time: float,
         current_sample_rate: int,
-        tolerance_ratio: float = 0.05,
-        extra_predicates: Optional[List[Callable[[ModelConfig], bool]]] = None,
     ) -> List[ModelConfig]:
         """
-        根据 abs(model.time * model.sample_rate - 当前时间 * 当前采样率) < 5%*(当前时间*当前采样率) 进行筛选。
-        可通过 extra_predicates 传入更多条件函数以扩展筛选（开闭原则）。
+        严格比较维度：仅当 model.dimension 等于 current_time * current_sample_rate 时返回。
+        如果模型缺少 dimension，将被忽略。
         """
-        target = float(current_time) * float(current_sample_rate)
-        tolerance = abs(tolerance_ratio * target)
+        target = int(round(float(current_time) * float(current_sample_rate)))
 
         results: List[ModelConfig] = []
         for m in self._models:
-            # 优先使用 dimension（样本点数）
-            if m.dimension is not None and m.dimension > 0:
-                product = float(m.dimension)
-            else:
-                if m.time is None or m.sample_rate is None:
-                    continue
-                product = float(m.time) * float(m.sample_rate)
-            if abs(product - target) < tolerance:
-                results.append(m)
-
-        if extra_predicates:
-            for predicate in extra_predicates:
-                results = [m for m in results if predicate(m)]
+            if m.dimension is None:
+                continue
+            try:
+                if int(m.dimension) == target:
+                    results.append(m)
+            except Exception:
+                continue
 
         return results
 
@@ -163,12 +156,13 @@ class AIConfigView(QDialog):
     def __init__(
         self,
         parent: Optional[QWidget] = None,
+        forced_sample_rate: Optional[int] = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("AI 分析参数配置")
         self.setModal(True)
 
-        self.sample_rates = [44100, 48000]
+        self._forced_sample_rate: Optional[int] = forced_sample_rate
 
         # Widgets
         self.checkbox_use_ai = QCheckBox("启用 AI 分析")
@@ -180,10 +174,11 @@ class AIConfigView(QDialog):
         self.spin_time.setValue(4.0)
         self.spin_time.setSuffix("s")
 
-        self.combo_sample_rate = QComboBox()
-        for sr in self.sample_rates:
-            self.combo_sample_rate.addItem(str(sr), sr)
-        self.combo_sample_rate.setCurrentIndex(0 if len(self.sample_rates) > 1 else 0)  # 默认 44100
+        # 采样率仅来源于外部传入，使用被禁用的单行输入框展示
+        self.sample_rate_input = QLineEdit(
+            str(self._forced_sample_rate) if self._forced_sample_rate is not None else "未提供"
+        )
+        self.sample_rate_input.setEnabled(False)
 
         self.combo_model = QComboBox()
 
@@ -203,7 +198,7 @@ class AIConfigView(QDialog):
         form = QFormLayout()
         form.addRow(self.checkbox_use_ai)
         form.addRow(QLabel("时间设置"), self.spin_time)
-        form.addRow(QLabel("采 样 率"), self.combo_sample_rate)
+        form.addRow(QLabel("采 样 率"), self.sample_rate_input)
         form.addRow(QLabel("模型选择"), self.combo_model)
         form.addRow(QLabel("分析间隔"), self.spin_interval)
 
@@ -227,18 +222,17 @@ class AIConfigView(QDialog):
     # -------- View helper methods -------- #
     def set_controls_enabled(self, enabled: bool) -> None:
         self.spin_time.setEnabled(enabled)
-        self.combo_sample_rate.setEnabled(enabled)
         self.combo_model.setEnabled(enabled)
         self.spin_interval.setEnabled(enabled)
         # 模型管理与启用 AI 无直接耦合，允许始终可点击；如需禁用可改为 self.btn_manage_models.setEnabled(enabled)
 
     def get_time_value(self) -> float:
-        return float(self.spin_time.value())
+        return round(float(self.spin_time.value()), 1)
 
     def get_sample_rate_value(self) -> int:
-        # 通过 userData 取 int
-        data = self.combo_sample_rate.currentData()
-        return int(data) if data is not None else int(self.combo_sample_rate.currentText())
+        if self._forced_sample_rate is None:
+            raise ValueError("未提供采样率：该对话框需要外部采样率作为唯一来源")
+        return int(self._forced_sample_rate)
 
     def set_model_options(self, model_names: List[str]) -> bool:
         self.combo_model.blockSignals(True)
@@ -257,7 +251,7 @@ class AIConfigView(QDialog):
         return self.combo_model.currentText()
 
     def get_analysis_interval(self) -> float:
-        return float(self.spin_interval.value())
+        return round(float(self.spin_interval.value()), 1)
 
     def set_result_data(self, data: dict) -> None:
         self._result_data = data
@@ -274,16 +268,18 @@ class AIConfigController:
     控制器：绑定交互、调用 Model 进行筛选并更新 View
     """
 
-    def __init__(self, model_store: AIModelStore, view: AIConfigView, manage_dialog_factory: Optional[Callable[[AIModelStore, QWidget], QDialog]] = None) -> None:
+    def __init__(self, model_store: AIModelStore, view: AIConfigView, manage_dialog_factory: Optional[Callable[[AIModelStore, QWidget], QDialog]] = None, models_json_path: Optional[str] = None) -> None:
         self.model_store = model_store
         self.view = view
         # 满足开闭原则：通过工厂函数注入模型管理对话框的构造器
         self.manage_dialog_factory = manage_dialog_factory
+        # 外部注入的模型 JSON 路径（若未提供则使用默认相对路径）
+
+        self.models_json_path = models_json_path
 
         # 连接信号
         self.view.checkbox_use_ai.toggled.connect(self.on_toggle_use_ai)
         self.view.spin_time.valueChanged.connect(self.refresh_model_list)
-        self.view.combo_sample_rate.currentTextChanged.connect(self.refresh_model_list)
         self.view.button_box.accepted.connect(self.on_confirm)
         self.view.button_box.rejected.connect(self.on_cancel)
         self.view.btn_manage_models.clicked.connect(self.on_manage_models)
@@ -300,16 +296,32 @@ class AIConfigController:
         else:
             # 未启用时，模型下拉同步禁用
             self.view.combo_model.setEnabled(False)
+            # 未启用 AI 时允许确认
+            self.view.button_box.button(QDialogButtonBox.Ok).setEnabled(True)
 
     def refresh_model_list(self) -> None:
         time_value = self.view.get_time_value()
         sample_rate_value = self.view.get_sample_rate_value()
-        filtered = self.model_store.filter_models(time_value, sample_rate_value, tolerance_ratio=0.05)
+        filtered = self.model_store.filter_models(time_value, sample_rate_value)
         has_models = self.view.set_model_options([m.model_name for m in filtered])
         # 只有在启用 AI 且有可用模型时允许选择
         self.view.combo_model.setEnabled(self.view.checkbox_use_ai.isChecked() and has_models)
+        # 根据是否启用 AI 以及是否有匹配模型控制“确认”按钮
+        ok_btn = self.view.button_box.button(QDialogButtonBox.Ok)
+        if self.view.checkbox_use_ai.isChecked():
+            ok_btn.setEnabled(has_models)
+        else:
+            ok_btn.setEnabled(True)
 
     def on_confirm(self) -> None:
+        # 启用 AI 但无匹配模型时阻止退出
+        if self.view.checkbox_use_ai.isChecked():
+            time_value = self.view.get_time_value()
+            sample_rate_value = self.view.get_sample_rate_value()
+            filtered = self.model_store.filter_models(time_value, sample_rate_value)
+            if not filtered:
+                self.view.button_box.button(QDialogButtonBox.Ok).setEnabled(False)
+                return
         result = {
             "use_ai": bool(self.view.checkbox_use_ai.isChecked()),
             "time": float(self.view.get_time_value()),
@@ -325,21 +337,13 @@ class AIConfigController:
 
     def on_manage_models(self) -> None:
         if self.manage_dialog_factory is None:
-            # 默认简单实现：只读查看当前可用模型
-            dlg = QDialog(self.view)
-            dlg.setWindowTitle("模型管理")
-            layout = QVBoxLayout()
-            lst = QListWidget()
-            for m in self.model_store.get_all():
-                dim_txt = f"dim={m.dimension}" if m.dimension is not None else "dim=?"
-                lst.addItem(f"{m.model_name}  {dim_txt}")
-            layout.addWidget(lst)
-            close_btn = QPushButton("关闭")
-            close_btn.clicked.connect(dlg.accept)
-            layout.addWidget(close_btn)
-            dlg.setLayout(layout)
-            dlg.resize(360, 300)
-            dlg.exec_()
+            # 使用注册模型管理器作为管理界面（路径由外部注入）
+            manager = ModelManagerApp(self.models_json_path)
+            code, _ = manager.run()
+            if code == QDialog.Accepted:
+                # 重新加载模型数据并刷新下拉框
+                self.model_store = AIModelStore.from_json_or_default(self.models_json_path)
+                self.refresh_model_list()
             return
 
         # 使用注入的工厂创建可扩展对话框
@@ -354,14 +358,25 @@ class AIConfigController:
 def main() -> None:
     app = QApplication(sys.argv)
 
-    # 模型数据来源：优先尝试当前目录下的 models.json（要求字段匹配），否则使用内置列表
+    # 模型数据来源：优先尝试当前目录下的 models.json（要求字段匹配）
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    json_path = os.path.join(current_dir, "../ui_config/models.json")
+    default_json_path = os.path.join(current_dir, "../ui_config/models.json")
+    injected_json_path = sys.argv[1] if len(sys.argv) > 1 else None
+    json_path = injected_json_path or default_json_path
+    # 必须第二个参数：采样率（外部传入作为唯一来源）
+    if len(sys.argv) <= 2:
+        print("需要提供采样率作为第二个参数，例如: python ai_analysis_config_mvc.py <models.json> 44100")
+        sys.exit(1)
+    try:
+        forced_sample_rate = int(sys.argv[2])
+    except Exception:
+        print("采样率参数无效，必须为整数，例如 44100 或 48000")
+        sys.exit(1)
     print(json_path)
     model_store = AIModelStore.from_json_or_default(json_path)
 
-    view = AIConfigView()
-    controller = AIConfigController(model_store, view)  # noqa: F841 (保持引用)
+    view = AIConfigView(forced_sample_rate=forced_sample_rate)
+    controller = AIConfigController(model_store, view, models_json_path=json_path)  # noqa: F841 (保持引用)
 
     view.resize(420, 240)
     if view.exec_() == view.Accepted:

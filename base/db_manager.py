@@ -182,6 +182,7 @@ class DataManage(object):
             return error_code.INVALID_UPDATE, err_msg
 
     def query(self, table_name, query_column, query_clause_data: dict = None, FK_related=False):
+        print(self.db_name)
         try:
             join_sql = ""
             where_clause = ""

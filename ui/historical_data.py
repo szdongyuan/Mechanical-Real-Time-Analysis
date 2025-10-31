@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QTableView, QHea
 
 from base.audio_data_manager import get_record_audio_data_from_db, get_record_audio_data_path
 from base.player_audio import AudioPlayer
+from consts.running_consts import DEFAULT_DIR
 
 
 class HistoryDataWindow(QDialog):
@@ -21,8 +22,8 @@ class HistoryDataWindow(QDialog):
 
         self.player = None
 
-        self.play_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/play.png")
-        self.pause_icon = QIcon("D:/gqgit/new_project/ui/ui_pic/sequence_pic/pause.png")
+        self.play_icon = QIcon(DEFAULT_DIR + "ui/ui_pic/sequence_pic/play.png")
+        self.pause_icon = QIcon(DEFAULT_DIR + "ui/ui_pic/sequence_pic/pause.png")
         self.history_data_table.clicked.connect(self.on_cell_clicked)
 
         self.init_ui()
@@ -73,7 +74,7 @@ class HistoryDataWindow(QDialog):
     ):
         audio_data_items = []
         record_audio_name = self.get_record_audio_data_name(record_audio_data_path)
-        play_item = CustomStandardItem("D:/gqgit/new_project/ui/ui_pic/sequence_pic/play.png", "播放")
+        play_item = CustomStandardItem(DEFAULT_DIR + "ui/ui_pic/sequence_pic/play.png", "播放")
         record_audio_name_item = QStandardItem(record_audio_name)
         record_time_item = QStandardItem(str(record_time))
         stop_time_item = QStandardItem(str(stop_time))
