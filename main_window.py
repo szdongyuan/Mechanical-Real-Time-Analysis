@@ -234,8 +234,11 @@ class MainWindow(QMainWindow):
 
     def load_model_analysis_config(self):
         analysis_json_path = os.path.normpath(DEFAULT_DIR + "ui/ui_config/model_analysis.json")
-        with open(analysis_json_path, "r", encoding="utf-8") as f:
-            self.model_analysis_config = json.load(f)
+        try:
+            with open(analysis_json_path, "r", encoding="utf-8") as f:
+                self.model_analysis_config = json.load(f)
+        except Exception:
+            pass
         self.center_widget.main_widget.build_audio_segment_extractor(
             extract_flag=bool(self.model_analysis_config.get("use_ai", False)),
             extract_interval=float(self.model_analysis_config.get("analysis_interval", 3.5)),
