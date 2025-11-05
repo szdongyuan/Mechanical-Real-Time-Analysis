@@ -1,0 +1,94 @@
+# DO NOT MOVE, UNLESS NECESSARY!!!
+
+- module_name: "data_load"
+
+  module_config:
+    product_model: Null
+    sweep_type: "linear_chirp_1"
+    recode_date:
+      train_data_date:
+        - 2024-06-07
+        - 2024-06-11
+      test_data_date:
+        - 2024-06-12
+        - 2024-06-14
+    sweep_duration: "3"
+    start_feq: Null
+    end_feq: Null
+
+- module_name: "preprocess"
+
+  module_config:
+
+    preprocess_method: "None"
+
+- module_name: "model"
+
+  module_config:
+
+    model_name: "CNN1d"
+
+    model_init_config:
+      input_len_1: 176400  # 64340, 132300, 176400, 220500
+      input_len_2: 1
+      layers_param:
+        - layer_name: "Conv1D"
+          layer_kwargs:
+            filters: 40
+            kernel_size: 1000
+            activation: "relu"
+            strides: 10
+        - layer_name: "MaxPooling1D"
+          layer_kwargs:
+            pool_size: 3  # 3, 5
+        - layer_name: "Conv1D"
+          layer_kwargs:
+            filters: 60
+            kernel_size: 20
+            activation: "relu"
+            strides: 6
+        - layer_name: "MaxPooling1D"
+          layer_kwargs:
+            pool_size: 3
+        - layer_name: "Conv1D"
+          layer_kwargs:
+            filters: 80
+            kernel_size: 10
+            activation: "relu"
+            strides: 1
+        - layer_name: "MaxPooling1D"
+          layer_kwargs:
+            pool_size: 3
+        - layer_name: "Flatten"
+        - layer_name: "Dense"
+          layer_kwargs:
+            units: 128
+            activation: "relu"
+        - layer_name: "Dense"
+          layer_kwargs:
+            units: 1
+            activation: "sigmoid"
+      compile_param:
+        optimizer: 'adam'
+        loss: 'binary_crossentropy'
+        metrics:
+          - accuracy
+
+    model_compile_config:
+      optimizer: "adam"
+      loss: "binary_crossentropy"
+      metrics:
+        - accuracy
+
+    model_fit_config:
+      balance_sample_number: False
+      cycles: 1
+      epochs: 10
+      batch_size: 30
+      early_stop: False
+      class_weight:
+        0: 1
+        1: 1
+
+    model_predict_config:
+      acc_req: 0.5
