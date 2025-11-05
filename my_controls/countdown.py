@@ -14,11 +14,11 @@ class Countdown(QThread):
         self.timer.timeout.connect(self.update_time)
 
     def update_time(self):
-        if self.countdown_time < self.count:
+        if self.countdown_time < self.count - 1:
             self.countdown_time += 1
         else:
             self.countdown_time = 0
-            self.signal_for_update.emit(self.countdown_time)
+            self.signal_for_update.emit(self.count)
 
     def count_stop(self):
         print("count_stop")

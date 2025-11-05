@@ -66,6 +66,7 @@ def auto_save_data(audio_data, sampling_rate, save_path, selected_channels, star
     mac_address = mac_address.replace(":", "") if mac_address else None
     channels = len(selected_channels)
     stop_time = time.strftime("%Y%m%d%H%M%S", time.localtime())
+    
     file_name = (
         save_path
         + "/"
@@ -83,9 +84,10 @@ def auto_save_data(audio_data, sampling_rate, save_path, selected_channels, star
     save_audio_data(audio_data, sampling_rate, file_name)
 
     record_id = str(uuid.uuid1())
-
+    stop_time_cn = time.strftime("%Y年%m月%d日 %H时%M分%S秒", time.strptime(stop_time, "%Y%m%d%H%M%S"))
+    start_record_time = time.strftime("%Y年%m月%d日 %H时%M分%S秒", time.strptime(start_record_time, "%Y%m%d%H%M%S"))
     add_record_audio_data_to_db(
-        record_id, file_name, start_record_time, time.strftime("%Y%m%d%H%M%S", time.localtime())
+        record_id, file_name, start_record_time, stop_time_cn
     )
 
     return stop_time

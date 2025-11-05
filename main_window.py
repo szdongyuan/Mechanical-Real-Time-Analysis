@@ -165,12 +165,12 @@ class MainWindow(QMainWindow):
         self.load_model_analysis_config()
 
     def init_ui(self):
-        self.setWindowTitle("实时波形显示")
+        self.setWindowTitle("设备健康状态监测")
         self.center_widget = CenterWidget(self)
 
         self.setCentralWidget(self.center_widget)
         self.set_menu_bar()
-        # 连接分析完成信号（若存在）
+
         try:
             self.center_widget.main_widget.analysis_completed.connect(self.on_analysis_completed)
         except Exception:
@@ -255,7 +255,6 @@ class MainWindow(QMainWindow):
                 pass
             # 驱动引擎
             # 在解析items前，基于随机数调整每通道OK/NG并生成评价列表
-            print(results)
             try:
                 self._last_channel_evaluations = evaluate_results_with_randoms(results)
                 print(self._last_channel_evaluations)

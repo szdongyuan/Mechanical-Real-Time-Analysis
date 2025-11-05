@@ -118,7 +118,7 @@ class AudioSegmentExtractor:
                     segment = ring_buffer[start:end]
                 else:
                     # 用 0 进行前置填充，将现有数据贴到尾部，避免 available_len==0 时出现整段切片被空数组覆盖
-                    segment = np.zeros(self.segment_samples, dtype=np.float16)
+                    segment = np.zeros(self.segment_samples, dtype=np.float32)
                     if available_len > 0:
                         segment[-available_len:] = ring_buffer[:available_len]
                 
