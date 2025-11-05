@@ -28,7 +28,7 @@ class DataAlignment(object):
             - padded_inputs: array
                 A numpy array contains padded or truncated signal data.
         """
-        dtype = kwargs.get("dtype", "float32")
+        dtype = kwargs.get("dtype", "float16")
         maxlen = kwargs.get("maxlen", 66150)
         padding = kwargs.get("padding", "post")
         truncating = kwargs.get("truncating", "post")

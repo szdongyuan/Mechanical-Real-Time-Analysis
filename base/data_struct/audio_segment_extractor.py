@@ -53,7 +53,7 @@ class AudioSegmentExtractor:
             num_channels = len(audio_data_arr)
             # 初始化二维数组，用于存储提取的数据
             # 形状为 (通道数, 片段采样点数)
-            self._extracted_segments = np.zeros((num_channels, self.segment_samples), dtype=np.float32)
+            self._extracted_segments = np.zeros((num_channels, self.segment_samples), dtype=np.float16)
     
     def start(self):
         """启动提取器"""
@@ -106,28 +106,21 @@ class AudioSegmentExtractor:
         
         with self._lock:
             for channel_idx, ring_buffer in enumerate(self._audio_data_arr):
-                # 获取环形缓冲区的写入位置
-                if self._write_index_ref is not None and channel_idx < len(self._write_index_ref):
-                    write_idx = self._write_index_ref[channel_idx]
-                    
-                    # 将环形缓冲区转换为线性数组
-                    # write_idx 指向下一个要写入的位置
-                    # 最旧的数据在 write_idx 位置，最新的数据在 write_idx-1 位置
-                    # 拼接顺序：[write_idx:] 是较旧的数据, [:write_idx] 是较新的数据
-                    linear_data = np.concatenate([ring_buffer[write_idx:], ring_buffer[:write_idx]])
+                # 根据写入长度与实际缓冲长度，计算可用数据长度
+                write_length = int(self._write_index_ref[channel_idx]) if self._write_index_ref is not None else len(ring_buffer)
+                data_length = len(ring_buffer)
+                available_len = max(0, min(write_length, data_length))
+
+                if available_len >= self.segment_samples:
+                    # 直接切取最后 segment_samples 个采样点（以 write_length 为右边界）
+                    end = available_len
+                    start = end - self.segment_samples
+                    segment = ring_buffer[start:end]
                 else:
-                    # 如果没有提供write_index，假设是普通数组
-                    linear_data = ring_buffer
-                
-                # 从线性数据中提取最后segment_samples个采样点
-                data_length = len(linear_data)
-                if data_length >= self.segment_samples:
-                    # 如果数据足够，提取最后的segment_samples个点
-                    segment = linear_data[-self.segment_samples:]
-                else:
-                    # 如果数据不足，用0填充前面部分
-                    segment = np.zeros(self.segment_samples, dtype=np.float32)
-                    segment[-data_length:] = linear_data
+                    # 用 0 进行前置填充，将现有数据贴到尾部，避免 available_len==0 时出现整段切片被空数组覆盖
+                    segment = np.zeros(self.segment_samples, dtype=np.float16)
+                    if available_len > 0:
+                        segment[-available_len:] = ring_buffer[:available_len]
                 
                 # 存储到二维数组对应通道
                 self._extracted_segments[channel_idx] = segment
@@ -162,12 +155,24 @@ class AudioSegmentExtractor:
         Returns:
             包含片段配置信息的字典
         """
+        # 计算通道数：兼容 numpy.ndarray 与 list，避免 ndarray 的布尔判断
+        if self._audio_data_arr is None:
+            num_channels = 0
+        else:
+            try:
+                num_channels = int(self._audio_data_arr.shape[0])
+            except Exception:
+                try:
+                    num_channels = len(self._audio_data_arr)
+                except Exception:
+                    num_channels = 0
+
         return {
             "extract_interval": self.extract_interval,
             "segment_duration": self.segment_duration,
             "sampling_rate": self.sampling_rate,
             "segment_samples": self.segment_samples,
-            "num_channels": len(self._audio_data_arr) if self._audio_data_arr else 0,
+            "num_channels": num_channels,
             "is_running": self._is_running
         }
     

@@ -1,3 +1,31 @@
+"""
+错误管理表格（ErrorManageWidget）模块
+
+对外接口（推荐调用）：
+- ErrorManageWidget.load_warning_data():
+    从数据库查询最新数据并写入表格（清空旧数据后再填充）。
+- ErrorManageWidget.show():
+    已重载，展示窗口前会自动调用 load_warning_data()。
+- ErrorManageWidget.add_warning_data(audio_datas):
+    传入已查询好的数据列表并写入表格（无需直接操作数据库）。
+
+使用方法：
+    from ui.error_manage_widget import ErrorManageWidget
+
+    widget = ErrorManageWidget()
+    # 方式一：手动加载
+    widget.load_warning_data()
+    widget.show()
+
+    # 方式二：直接 show（内部会自动加载）
+    widget = ErrorManageWidget()
+    widget.show()
+
+注意：
+- 数据库查询依赖 base.audio_data_manager.get_warning_audio_data_from_db。
+- 若需要刷新表格（例如外部更新了数据库），再次调用 load_warning_data() 即可。
+"""
+
 import sys
 
 from PyQt5.QtCore import Qt, QSize
@@ -28,9 +56,9 @@ class ErrorManageWidget(QWidget):
         self.error_manage_table.verticalHeader().setDefaultSectionSize(40)
         self.error_manage_table.setStyleSheet(
             """QTableView::item {
-                                                                    border-top: 1px solid rgb(130, 135, 144);
-                                                                    color: black;
-                                                                  }"""
+                border-top: 1px solid rgb(130, 135, 144);
+                color: black;
+            }"""
         )
         self.error_manage_table.model().setHorizontalHeaderLabels(
             [
@@ -52,16 +80,31 @@ class ErrorManageWidget(QWidget):
         # header.setStretchLastSection(True)
         header.setSectionResizeMode(6, QHeaderView.Stretch)
 
-        result = get_warning_audio_data_from_db()
-        if result:
-            self.add_warning_data(result)
-        self.setup_buttons_in_btn_column()
-        self.setup_combobox(result)
+        # 数据加载改为显式接口调用：请调用 load_warning_data()
 
         error_manage_table_layout = QVBoxLayout()
         error_manage_table_layout.addWidget(self.error_manage_table)
 
         return error_manage_table_layout
+
+    def load_warning_data(self):
+        """
+        显式从数据库查询并写入表格。
+        可在外部初始化完控件后调用，以避免在构造阶段自动加载。
+        """
+        result = get_warning_audio_data_from_db()
+        # 清空现有数据
+        try:
+            self.error_manage_model.removeRows(0, self.error_manage_model.rowCount())
+        except Exception:
+            pass
+
+        if result:
+            self.add_warning_data(result)
+        # 组件（按钮/下拉）依赖数据存在后再设置
+        self.setup_buttons_in_btn_column()
+        if result:
+            self.setup_combobox(result)
 
     def add_warning_data(self, audio_datas):
         for audio_data in audio_datas:
@@ -161,6 +204,10 @@ class ErrorManageWidget(QWidget):
 
     def on_ignore_btn_clicked(self, row):
         print(f"忽略第 {row} 行")
+
+    def show(self):
+        self.load_warning_data()
+        super().show()
 
 
 class CustomStandardItemModel(QStandardItemModel):

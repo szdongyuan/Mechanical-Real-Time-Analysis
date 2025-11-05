@@ -1,3 +1,39 @@
+"""
+历史数据窗口（HistoryDataWindow）模块
+
+对外接口（推荐调用）：
+- HistoryDataWindow.load_history_data():
+    从数据库查询历史录音数据并写入表格（清空旧数据后再填充）。
+- HistoryDataWindow.show():
+    已重载，展示窗口前自动调用 load_history_data()，保证数据为最新。
+- HistoryDataWindow.add_history_data(audio_datas):
+    批量将外部已查询的数据写入表格。
+- HistoryDataWindow.add_history_data_to_table(...):
+    将单条历史记录写入表格。
+- HistoryDataWindow.on_cell_clicked(index):
+    响应“操作”列播放/暂停的交互。
+- HistoryDataWindow.load_wave_data(path):
+    从指定路径加载波形数据用于播放。
+- HistoryDataWindow.player_wave_data(wave_data):
+    播放给定的波形数据。
+
+使用示例：
+    from ui.historical_data import HistoryDataWindow
+
+    dlg = HistoryDataWindow()
+    # 方式一：手动加载
+    dlg.load_history_data()
+    dlg.show()
+
+    # 方式二：直接 show（内部会自动加载）
+    dlg = HistoryDataWindow()
+    dlg.show()
+
+注意：
+- 数据库查询依赖 base.audio_data_manager.get_record_audio_data_from_db 与 get_record_audio_data_path。
+- 播放依赖 base.player_audio.AudioPlayer；读取音频依赖 librosa。
+"""
+
 import sys
 import librosa
 
@@ -52,16 +88,27 @@ class HistoryDataWindow(QDialog):
         # header.setStretchLastSection(True)
         header.setSectionResizeMode(5, QHeaderView.Stretch)
 
-        result = get_record_audio_data_from_db()
-        if result:
-            self.add_history_data(result)
-
-        self.history_data_table.viewport().update()
+        # 数据加载改为显式接口调用：请调用 load_history_data()
 
         history_data_table_layout = QVBoxLayout()
         history_data_table_layout.addWidget(self.history_data_table)
 
         return history_data_table_layout
+
+    def load_history_data(self):
+        """
+        显式从数据库查询历史录音数据并填充表格。
+        可在外部初始化完控件后调用，以避免在构造阶段自动加载。
+        """
+        result = get_record_audio_data_from_db()
+        try:
+            self.history_data_model.removeRows(0, self.history_data_model.rowCount())
+        except Exception:
+            pass
+
+        if result:
+            self.add_history_data(result)
+        self.history_data_table.viewport().update()
 
     def add_history_data(self, audio_datas):
         for audio_data in audio_datas:
@@ -136,6 +183,11 @@ class HistoryDataWindow(QDialog):
 
     def on_playback_finished(self):
         print("播放完成")
+
+    def show(self):
+        # 展示前自动刷新一次数据
+        self.load_history_data()    
+        super().show()
 
 
 class CustomStandardItemModel(QStandardItemModel):

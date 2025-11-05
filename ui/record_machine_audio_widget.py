@@ -2,7 +2,10 @@ from re import T
 import numpy as np
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import uuid
+import tempfile
+import multiprocessing as mp
+
 import sounddevice as sd
 import time
 import threading
@@ -20,7 +23,6 @@ from base.log_manager import LogManager
 from base.record_audio import AudioDataManager
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.data_struct.audio_segment_extractor import AudioSegmentExtractor
-from base.predict_model import predict_from_audio
 from base.training_model_management import TrainingModelManagement
 from consts import model_consts, error_code
 from consts.running_consts import DEFAULT_DIR
@@ -29,6 +31,97 @@ from my_controls.multiple_chartsgraph import MultipleChartsGraph
 from my_controls.countdown import Countdown
 from ui.device_list import DeviceListWindow
 
+
+def analysis_worker(job_queue, result_queue):
+    """
+    独立进程中的分析工作循环：
+    - 从 job_queue 获取任务（包含 npy 路径、采样率、模型与配置路径）
+    - 加载切片 numpy 文件；首次或模型路径变更时常驻加载模型
+    - 逐通道执行预测（复用已加载模型）
+    - 将结果通过 result_queue 回传
+    - 接收到 None 时退出
+    """
+    # 子进程内限制底层线程数，避免过度并行
+    try:
+        os.environ.setdefault("OMP_NUM_THREADS", "1")
+        os.environ.setdefault("MKL_NUM_THREADS", "1")
+        os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+        os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+        os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+    except Exception:
+        pass
+    try:
+        import numpy as _np
+        import os as _os
+        import json as _json
+        from base.predict_model import predict_from_audio as _predict_from_audio
+        from base.model_config import init_model_from_config as _init_model_from_config
+    except Exception as e:
+        # 若初始化即失败，尝试将错误回传并退出
+        try:
+            result_queue.put({"job_id": None, "results": [{"channel": -1, "data": {"ret_code": -1, "ret_msg": f"worker init error: {e}", "result": []}}]})
+        finally:
+            return
+
+    # 常驻模型缓存
+    _model = None
+    _last_model_path = None
+    _last_config_path = None
+
+    while True:
+        job = job_queue.get()
+        if job is None:
+            break
+        job_id = job.get("job_id")
+        npy_path = job.get("npy_path")
+        sampling_rate = job.get("sampling_rate")
+        model_path = job.get("model_path")
+        config_path = job.get("config_path")
+        results = []
+        try:
+            segments = _np.load(npy_path)
+            try:
+                # 及时删除临时文件，避免堆积
+                _os.remove(npy_path)
+            except Exception:
+                pass
+            # 如有必要，加载或切换常驻模型
+            if (_model is None) or (model_path != _last_model_path) or (config_path != _last_config_path):
+                try:
+                    print(config_path)
+                    _model = _init_model_from_config(config_path=config_path)
+                    _model.load_model(model_path)
+                    _last_model_path = model_path
+                    _last_config_path = config_path
+                except Exception as e:
+                    results = [{"channel": -1, "data": {"ret_code": -1, "ret_msg": f"model load error: {e}", "result": []}}]
+                    try:
+                        result_queue.put({"job_id": job_id, "results": results})
+                    finally:
+                        continue
+            num_channels = int(segments.shape[0]) if segments is not None else 0
+            for i in range(num_channels):
+                signal = segments[i]
+                try:
+                    ret_str = _predict_from_audio(
+                        signals=[signal],
+                        file_names=[f"channel_{i}"],
+                        fs=[sampling_rate],
+                        model=_model,
+                        config_path=config_path,
+                    )
+                    ret = _json.loads(ret_str)
+                except Exception as e:
+                    ret = {"ret_code": -1, "ret_msg": f"predict error: {e}", "result": [[f"channel_{i}", "ERR", "0.0"]]}
+                results.append({"channel": i, "data": ret})
+
+        except Exception as e:
+            results = [{"channel": -1, "data": {"ret_code": -1, "ret_msg": f"worker error: {e}", "result": []}}]
+        try:
+            result_queue.put({"job_id": job_id, "results": results})
+        except Exception:
+            # 主进程可能已退出
+            pass
 
 class RecordMachineAudioWidget(QWidget):
     recording_started = pyqtSignal()
@@ -44,7 +137,7 @@ class RecordMachineAudioWidget(QWidget):
         self.sampling_rate = 44100
         self.channels = None
         self.selected_channels = list()
-        self.total_display_time = 600  # s
+        self.total_display_time = 60  # s
         self.nfft = 256
         self.fs = 44100
         self.ctx = sd._CallbackContext()
@@ -83,6 +176,20 @@ class RecordMachineAudioWidget(QWidget):
         self.chart_graph = MultipleChartsGraph()
         self.init_ui()
 
+        # 分析进程相关
+        self._analysis_ctx = None
+        self._analysis_job_q = None
+        self._analysis_res_q = None
+        self._analysis_proc = None
+        self._analysis_running = False
+        self._analysis_listener_thread = None
+        self._analysis_starting = False  # 防止并发启动
+        self._temp_dir = os.path.join(tempfile.gettempdir(), "audio_segments_tmp")
+        try:
+            os.makedirs(self._temp_dir, exist_ok=True)
+        except Exception:
+            pass
+
     def init_ui(self):
         record_operation_layout = self.create_record_operation_layout()
 
@@ -120,10 +227,10 @@ class RecordMachineAudioWidget(QWidget):
                 sampling_rate=self.sampling_rate,
             )
             self.segment_extractor.set_audio_source(
-                self.data_struct.audio_data_arr,
-                write_index_ref=self.data_struct.write_index
+                self.data_struct.audio_data,
+                write_index_ref=self.storage_filled_len
             )
-            # 设置提取完成回调：进行多线程预测并回传结果
+            # 设置提取完成回调：进行多线程预测并回传结果 
             self.segment_extractor.set_on_extracted_callback(self._handle_segments_extracted)
             self.data_struct.segment_extractor = self.segment_extractor
         else:
@@ -257,7 +364,6 @@ class RecordMachineAudioWidget(QWidget):
         self.record_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.audio_store_path_lineedit.setEnabled(False)
-        # self.set_light_color(self.warning_light, "green")
         self.data_struct.record_flag = True
         self.set_light_color(self.green_light, "green")
         self.set_light_color(self.red_light, "gray")
@@ -276,6 +382,9 @@ class RecordMachineAudioWidget(QWidget):
                 self.segment_extractor.start()
             else:
                 print("音频片段提取器已经在运行")
+
+        # 启动分析进程（若未启动）
+        self._start_analysis_process()
 
         print("被传入的声道： %s" %self.selected_channels)
         
@@ -308,6 +417,9 @@ class RecordMachineAudioWidget(QWidget):
                 self.segment_extractor.stop()
             else:
                 print("音频片段提取器已经在停止")
+
+        # 停止分析进程
+        self._stop_analysis_process()
         
         self.audio_manager.stop_recording()
         log_controller.info("停止录制音频")
@@ -335,45 +447,39 @@ class RecordMachineAudioWidget(QWidget):
 
     def _handle_segments_extracted(self, segments: np.ndarray, sampling_rate: int):
         """
-        在每次提取片段结束后，对每个通道的数据并行执行 predict_from_audio，
-        并通过 analysis_completed 信号把结果回传到主程序。
+        在每次提取片段结束后，将数据保存到临时文件并通过独立进程进行分析，
+        分析结束后通过 analysis_completed 信号把结果回传到主程序。
         """
         try:
             num_channels = segments.shape[0]
         except Exception:
             return
 
-        def analyze_channel(channel_index: int, model_path: str, config_path: str):
-            signal = segments[channel_index]
-            try:
-                ret_str = predict_from_audio(
-                    signals=[signal],
-                    file_names=[f"channel_{channel_index}"],
-                    fs=[sampling_rate],
-                    load_model_path=model_path,
-                    model=None,
-                    config_path=config_path,
-                )
-                ret = json.loads(ret_str)
-            except Exception as e:
-                ret = {"ret_code": -1, "ret_msg": f"predict error: {e}", "result": [[f"channel_{channel_index}", "ERR", "0.0"]]}
-            return {"channel": channel_index, "data": ret}
-
         code, query_result = self.get_model_info(self.model_name)
-        if code == error_code.OK:
-            model_path, config_path = query_result
-            max_workers = max(1, min(num_channels, 4))
-            results = [None] * num_channels
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_map = {executor.submit(analyze_channel, i, model_path, config_path): i for i in range(num_channels)}
-                for future in as_completed(future_map):
-                    idx = future_map[future]
-                    try:
-                        results[idx] = future.result()
-                    except Exception as e:
-                        results[idx] = {"channel": idx, "data": {"ret_code": -1, "ret_msg": f"executor error: {e}", "result": []}}
+        if code != error_code.OK or not query_result:
+            results = [{"channel": i, "data": {"ret_code": -1, "ret_msg": "model not found", "result": []}} for i in range(num_channels)]
+            self.analysis_completed.emit(results)
+            return
 
-            # 回传整批结果
+        model_path, config_path = query_result
+        # 确保进程已启动
+        self._start_analysis_process()
+
+        # 写入临时 npy 文件并投递任务
+        job_id = f"{int(time.time()*1000)}_{uuid.uuid4().hex}"
+        npy_path = os.path.join(self._temp_dir, f"segments_{job_id}.npy")
+        try:
+            np.save(npy_path, segments)
+            if self._analysis_job_q is not None:
+                self._analysis_job_q.put({
+                    "job_id": job_id,
+                    "npy_path": npy_path,
+                    "sampling_rate": sampling_rate,
+                    "model_path": model_path,
+                    "config_path": config_path,
+                })
+        except Exception as e:
+            results = [{"channel": -1, "data": {"ret_code": -1, "ret_msg": f"enqueue error: {e}", "result": []}}]
             self.analysis_completed.emit(results)
 
     def load_device_info(self):
@@ -446,23 +552,19 @@ class RecordMachineAudioWidget(QWidget):
             if self.segment_extractor.is_running:
                 self.segment_extractor.stop()
         
+        self._stop_analysis_process()
         self.audio_manager.stop_recording()
         self.audio_manager.quit()
         self.audio_manager.wait()
         self.data_struct.record_flag = False
         event.accept()
 
-    def save_audio_data(self):
+    def save_audio_data(self, countdown_time):
+        print("save_audio_data", countdown_time)
         save_path = self.audio_store_path_lineedit.text()
         self.start_record_time = auto_save_data(
             self.data_struct.audio_data, self.sampling_rate, save_path, self.selected_channels, self.start_record_time
         )
-        # print(len(self.data_struct.audio_data_arr[0]), len(self.data_struct.audio_data_arr[1]))
-        # audio_data_array = np.array([list(queue) for queue in self.data_struct.audio_data_arr])
-        # print(len(self.data_struct.audio_data_arr[0]), len(self.data_struct.audio_data_arr[1]))
-        # self.start_record_time = auto_save_data(
-        #     audio_data_array, self.sampling_rate, save_path, self.selected_channels, self.start_record_time
-        # )
 
     count = 0
 
@@ -479,7 +581,6 @@ class RecordMachineAudioWidget(QWidget):
         # 在计算过程中通过 epoch 双读法保证一致快照
         while True:
             e1 = getattr(self.data_struct, "epoch", 0)
-            print("e1 is %s " %e1)
             if e1 % 2 == 1:
                 # 写入进行中，等待下一轮
                 continue
@@ -492,7 +593,6 @@ class RecordMachineAudioWidget(QWidget):
                 if e1 != getattr(self.data_struct, "epoch", 0):
                     restart_needed = True
                     break
-                print("e1 is %s " %e1)
                 # 获取当前写入位置快照
                 write_idx_snapshot = int(self.data_struct.write_index[i])
                 new_write_indices[i] = write_idx_snapshot
@@ -575,7 +675,7 @@ class RecordMachineAudioWidget(QWidget):
                 if staged_write_indices[i] is not None:
                     self.channel_index[i] = int(staged_write_indices[i])
                 # 打印使用快照写指针，避免读取到回调中途的实时值
-                print(f"Channel {i}: write_index={int(staged_write_indices[i])}")
+                # print(f"Channel {i}: write_index={int(staged_write_indices[i])}")
 
             # 完成一轮无中断的计算与追加，退出
             break
@@ -600,7 +700,6 @@ class RecordMachineAudioWidget(QWidget):
                 break
 
             self.count += 1
-            # print(self.count)
             self.flush_audio_queue_to_array()
 
             for i in range(len(selected_channels)):
@@ -632,6 +731,83 @@ class RecordMachineAudioWidget(QWidget):
 
             time.sleep(1)
 
+
+    def _start_analysis_process(self):
+        if self._analysis_starting:
+            return
+
+        if self._analysis_proc is not None and self._analysis_proc.is_alive():
+            if not self._analysis_running:
+                self._analysis_running = True
+            if self._analysis_listener_thread is None:
+                self._start_analysis_listener()
+            return
+
+        self._analysis_starting = True  # 标记启动中
+        try:
+            self._analysis_ctx = mp.get_context("spawn")
+            self._analysis_job_q = self._analysis_ctx.Queue()
+            self._analysis_res_q = self._analysis_ctx.Queue()
+            self._analysis_proc = self._analysis_ctx.Process(target=analysis_worker, args=(self._analysis_job_q, self._analysis_res_q), daemon=True)
+            self._analysis_proc.start()
+            self._analysis_running = True
+            self._start_analysis_listener()
+        except Exception as e:
+            print(f"启动分析进程失败: {e}")
+        finally:
+            self._analysis_starting = False
+
+    def _start_analysis_listener(self):
+        if self._analysis_listener_thread is not None:
+            return
+        def _listen():
+            while self._analysis_running:
+                try:
+                    msg = self._analysis_res_q.get(timeout=0.5)
+                except Exception:
+                    continue
+                try:
+                    if msg and isinstance(msg, dict):
+                        results = msg.get("results", [])
+                        self.analysis_completed.emit(results)
+                except Exception:
+                    pass
+        self._analysis_listener_thread = threading.Thread(target=_listen, daemon=True)
+        self._analysis_listener_thread.start()
+
+    def _stop_analysis_process(self):
+        self._analysis_running = False
+        try:
+            if self._analysis_job_q is not None:
+                try:
+                    self._analysis_job_q.put(None)
+                except Exception:
+                    pass
+            if self._analysis_proc is not None:
+                self._analysis_proc.join(timeout=5)
+                if self._analysis_proc.is_alive():
+                    self._analysis_proc.terminate()
+        except Exception:
+            pass
+        finally:
+            # 关闭并回收队列，避免 Windows 下残留句柄导致子进程退出不彻底
+            try:
+                if self._analysis_job_q is not None:
+                    self._analysis_job_q.close()
+                    self._analysis_job_q.join_thread()
+            except Exception:
+                pass
+            try:
+                if self._analysis_res_q is not None:
+                    self._analysis_res_q.close()
+                    self._analysis_res_q.join_thread()
+            except Exception:
+                pass
+            self._analysis_proc = None
+            self._analysis_job_q = None
+            self._analysis_res_q = None
+            self._analysis_listener_thread = None
+            self._analysis_starting = False  # 重置启动标志
 
 if __name__ == "__main__":
     import sys

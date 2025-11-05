@@ -1,12 +1,9 @@
 import os
-import sys
 import json
 from dataclasses import dataclass
 from typing import List, Optional, Callable
 
-from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -15,7 +12,6 @@ from PyQt5.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLineEdit,
-    QListWidget,
     QPushButton,
     QLabel,
     QVBoxLayout,
@@ -268,7 +264,14 @@ class AIConfigController:
     控制器：绑定交互、调用 Model 进行筛选并更新 View
     """
 
-    def __init__(self, model_store: AIModelStore, view: AIConfigView, manage_dialog_factory: Optional[Callable[[AIModelStore, QWidget], QDialog]] = None, models_json_path: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        model_store: AIModelStore,
+        view: AIConfigView,
+        manage_dialog_factory: Optional[Callable[[AIModelStore, QWidget], QDialog]] = None,
+        models_json_path: Optional[str] = None,
+        initial_config: Optional[dict] = None,
+    ) -> None:
         self.model_store = model_store
         self.view = view
         # 满足开闭原则：通过工厂函数注入模型管理对话框的构造器
@@ -286,6 +289,59 @@ class AIConfigController:
 
         # 初始化模型列表（即使控件禁用也先计算一次，便于状态切换时立即可用）
         self.refresh_model_list()
+        # 根据外部传入配置初始化界面
+        self._apply_initial_config(initial_config)
+
+    def _apply_initial_config(self, cfg: Optional[dict]) -> None:
+        if not isinstance(cfg, dict) or not cfg:
+            return
+        try:
+            # 暂时屏蔽信号，避免多次刷新
+            self.view.checkbox_use_ai.blockSignals(True)
+            self.view.spin_time.blockSignals(True)
+            self.view.spin_interval.blockSignals(True)
+            self.view.combo_model.blockSignals(True)
+
+            # 应用时间、开关
+            if "time" in cfg and cfg["time"] is not None:
+                try:
+                    self.view.spin_time.setValue(float(cfg["time"]))
+                except Exception:
+                    pass
+            use_ai_checked = bool(cfg.get("use_ai", False))
+            self.view.checkbox_use_ai.setChecked(use_ai_checked)
+
+            # 刷新模型列表以匹配新的时间/采样率
+            self.refresh_model_list()
+
+            # 选择模型名称，不存在则选第一项
+            desired_name = str(cfg.get("model_name", ""))
+            idx_to_select = -1
+            if desired_name:
+                for i in range(self.view.combo_model.count()):
+                    if self.view.combo_model.itemText(i) == desired_name:
+                        idx_to_select = i
+                        break
+            if idx_to_select < 0 and self.view.combo_model.count() > 0:
+                idx_to_select = 0
+            if idx_to_select >= 0:
+                self.view.combo_model.setCurrentIndex(idx_to_select)
+
+            # 分析间隔
+            if "analysis_interval" in cfg and cfg["analysis_interval"] is not None:
+                try:
+                    self.view.spin_interval.setValue(float(cfg["analysis_interval"]))
+                except Exception:
+                    pass
+
+            # 控件可用状态与确认按钮
+            self.view.set_controls_enabled(use_ai_checked)
+            self.refresh_model_list()
+        finally:
+            self.view.checkbox_use_ai.blockSignals(False)
+            self.view.spin_time.blockSignals(False)
+            self.view.spin_interval.blockSignals(False)
+            self.view.combo_model.blockSignals(False)
 
     # -------- Slots -------- #
     def on_toggle_use_ai(self, checked: bool) -> None:
@@ -350,42 +406,3 @@ class AIConfigController:
         dlg = self.manage_dialog_factory(self.model_store, self.view)
         if isinstance(dlg, QDialog):
             dlg.exec_()
-
-
-# ========================= App (main) ========================= #
-
-
-def main() -> None:
-    app = QApplication(sys.argv)
-
-    # 模型数据来源：优先尝试当前目录下的 models.json（要求字段匹配）
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    default_json_path = os.path.join(current_dir, "../ui_config/models.json")
-    injected_json_path = sys.argv[1] if len(sys.argv) > 1 else None
-    json_path = injected_json_path or default_json_path
-    # 必须第二个参数：采样率（外部传入作为唯一来源）
-    if len(sys.argv) <= 2:
-        print("需要提供采样率作为第二个参数，例如: python ai_analysis_config_mvc.py <models.json> 44100")
-        sys.exit(1)
-    try:
-        forced_sample_rate = int(sys.argv[2])
-    except Exception:
-        print("采样率参数无效，必须为整数，例如 44100 或 48000")
-        sys.exit(1)
-    print(json_path)
-    model_store = AIModelStore.from_json_or_default(json_path)
-
-    view = AIConfigView(forced_sample_rate=forced_sample_rate)
-    controller = AIConfigController(model_store, view, models_json_path=json_path)  # noqa: F841 (保持引用)
-
-    view.resize(420, 240)
-    if view.exec_() == view.Accepted:
-        result = view.get_result_data()  # 字典结果
-        print(result)
-
-    # 应用以对话框为主，关闭对话框后退出
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()

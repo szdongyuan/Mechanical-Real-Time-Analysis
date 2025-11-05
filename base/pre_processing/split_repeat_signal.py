@@ -17,16 +17,16 @@ class SplitRepeatSignal(object):
         repeat_times = kwargs.get("repeat_times", 1)
 
         if not repeat_times or repeat_times <= 0:
-            return np.empty([[]], dtype=np.float32)
+            return np.empty([[]], dtype=np.float16)
 
         if repeat_times == 1:
-            return np.array([audio_data], dtype=np.float32)
+            return np.array([audio_data], dtype=np.float16)
 
         total_len = len(audio_data)
         seg_len = math.ceil(total_len / repeat_times)
 
         if seg_len == 0:
-            return np.array([[]], dtype=np.float32)
+            return np.array([[]], dtype=np.float16)
 
         segments = []
         for i in range(repeat_times - 1):
@@ -35,4 +35,4 @@ class SplitRepeatSignal(object):
             segment = audio_data[start:end]
             segments.append(segment)
         segments.append(audio_data[-seg_len:])
-        return np.array(segments, dtype=np.float32)
+        return np.array(segments, dtype=np.float16)
