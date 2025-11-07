@@ -1,10 +1,10 @@
 import time
 import threading
-import sounddevice as sd
 
 from PyQt5.QtCore import QThread
 
 from base.data_struct.data_deal_struct import DataDealStruct
+from base.sound_device_manager import sd
 
 
 class AudioDataManager(QThread):
@@ -28,7 +28,7 @@ class AudioDataManager(QThread):
         self.sampling_rate = sampling_rate
         self.channels = channels
         # self.audio_data = [[] for _ in range(len(selected_channels))]
-        count = 0
+        print(f"start_recording: {self.ctx}, {self.selected_channels}, {self.sampling_rate}, {self.channels}")
 
         def audio_callback(in_data, frames, t, status):
             # 开始一轮写入：epoch 置为奇数（写入中），并限制不超过 10000

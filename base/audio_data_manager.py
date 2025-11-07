@@ -4,7 +4,7 @@ import time
 
 from scipy.io import wavfile
 
-from base.db_manager import DataManage
+from base.database.db_manager import DataManage
 from base.get_mac_address import get_mac_address
 from base.log_manager import LogManager
 from consts import db_consts
@@ -34,12 +34,10 @@ def add_record_audio_data_to_db(
             logger.info("add_record_audio_data_to_db success")
         else:
             logger.error("add_record_audio_data_to_db failed")
-            # print(msg)
 
 
 def get_record_audio_data_from_db():
     with DataManage(db_consts.DATABASE_PATH) as db:
-        # print(db_consts.AUDIO_COLUMNS)
         code, result = db.query("record_audio_data_table", db_consts.AUDIO_COLUMNS)
         if code == 0:
             logger.info("get_record_audio_data_from_db success")
@@ -51,7 +49,6 @@ def get_record_audio_data_from_db():
 
 def get_warning_audio_data_from_db():
     with DataManage(db_consts.DATABASE_PATH) as db:
-        # print(db_consts.AUDIO_COLUMNS)
         code, result = db.query("warning_audio_data_table", db_consts.WARNING_COLUMNS)
         if code == 0:
             logger.info("get_warning_audio_data_from_db success")
@@ -59,6 +56,21 @@ def get_warning_audio_data_from_db():
         else:
             logger.error("get_warning_audio_data_from_db failed")
             return None
+
+
+def update_warning_audio_data(update_data: dict, condition_field: dict):
+    """
+    更新 warning_audio_data_table 中的数据。
+    update_data: 需要更新的列及其值，例如 {"description": "xxx"}
+    condition_field: 定位记录的条件，例如 {"warning_time": "...", "file_name": "..."}
+    """
+    with DataManage(db_consts.DATABASE_PATH) as db:
+        code, msg = db.update_table_data("warning_audio_data_table", update_data, condition_field)
+        if code == 0:
+            logger.info("update_warning_audio_data success")
+        else:
+            logger.error(f"update_warning_audio_data failed: {msg}")
+        return code, msg
 
 
 def auto_save_data(audio_data, sampling_rate, save_path, selected_channels, start_record_time) -> str:

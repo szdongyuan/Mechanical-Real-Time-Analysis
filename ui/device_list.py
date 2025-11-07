@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import QApplication, QAbstractItemView, QDialog, QHBoxLayou
 from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QComboBox, QMessageBox
 
 from base.data_struct.data_deal_struct import DataDealStruct
-from base.sound_device_manager import get_device_info
+from base.sound_device_manager import get_device_info, change_default_mic
 from consts.running_consts import DEFAULT_DIR
 from ui.calibration_window import CalibrationWindow
 from ui.system_information_textedit import log_controller
@@ -186,7 +186,7 @@ class DeviceListWindow(QDialog):
         self.selected_channels = [idx.data() for idx in selected_indices]
 
     @staticmethod
-    def save_device_data_to_json(device_name, device_chanels, selected_channels):
+    def save_device_data_to_json(device_name, device_chanels, selected_channels, current_api, mic_index):
         selected_channels.sort()
         # dir_path = "D:/gqgit/new_project/ui/ui_config/"
         file_path = DEFAULT_DIR + "ui/ui_config/device_data.json"
@@ -194,6 +194,8 @@ class DeviceListWindow(QDialog):
             "device_name": device_name,
             "device_chanels": device_chanels,
             "selected_channels": selected_channels,
+            "current_api": current_api,
+            "mic_index": mic_index,
         }
         try:
             with open(file_path, "w") as file:
@@ -203,11 +205,20 @@ class DeviceListWindow(QDialog):
 
     def on_click_ok_btn(self):
         self.data_struct.channels_change_flag = True
+        current_api = self.api_combo_box.currentText()
+        from pprint import pprint
+        pprint(f"current_api: {current_api}")
+        index = self.api_info[current_api]["input"].index(self.selected_device)
+        mic_index = self.api_info[current_api]["input"][index]["index"]
+        change_default_mic(mic_index)
         self.set_selected_channels()
         self.save_device_data_to_json(
-            self.selected_device["name"], self.selected_device["max_input_channels"], self.selected_channels
+            self.selected_device["name"],
+            self.selected_device["max_input_channels"],
+            self.selected_channels,
+            current_api,
+            mic_index
         )
-        # print("Selected channels:", self.selected_channels)
         log_controller.info(f"选择硬件{self.selected_device['name']}")
 
     def on_click_cancel_btn(self):

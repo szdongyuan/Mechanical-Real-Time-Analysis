@@ -1,6 +1,6 @@
 import sys
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox
 
 from base.data_struct.data_deal_struct import DataDealStruct
@@ -8,12 +8,16 @@ from ui.navigation_bar import NavigationBar
 from ui.historical_data import HistoryDataWindow
 from ui.device_list import DeviceListWindow
 from ui.system_information_textedit import SysInformationTextEdit, log_model, log_controller
-from ui.record_machine_audio_widget import RecordMachineAudioWidget
+from ui.record_machine_audio_widget import RecordMachineAudioModel, RecordMachineAudioView, RecordMachineAudioController
 from ui.error_manage_widget import ErrorManageWidget
 from ui.login_window import LoginWindow
 
 
 class CenterWidget(QWidget):
+    recording_started = pyqtSignal()
+    recording_stopped = pyqtSignal()
+    analysis_completed = pyqtSignal(object)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.data_struct = DataDealStruct()
@@ -23,12 +27,15 @@ class CenterWidget(QWidget):
         self.sys_information_textedit = SysInformationTextEdit()
         self.sys_information_textedit.set_model(log_model)
         self.navigation_bar = NavigationBar()
-        # self.main_widget = MainWidget(self)
-        self.main_widget = RecordMachineAudioWidget(self)
+        self.rm_view = None
+        self.rm_model = None
+        self.rm_controller = None
+        self.create_record_machine_audio_widget()
+
         self.error_manage_widget = ErrorManageWidget()
 
         self.widget_sequence = [
-            self.main_widget,
+            self.rm_view,
             self.history_data_window,
             self.error_manage_widget,
             self.device_list_window,
@@ -41,6 +48,27 @@ class CenterWidget(QWidget):
 
     def init_ui(self):
         self.create_layout()
+
+    def create_record_machine_audio_widget(self):
+        # 直接使用 MVC 三个类，并在此处组装
+        self.rm_model = RecordMachineAudioModel()
+        self.rm_view = RecordMachineAudioView()
+        # 控制器使用 CenterWidget 自身作为信号承载体
+        self.rm_controller = RecordMachineAudioController(self.rm_model, self.rm_view, self, self._emit_analysis_completed)
+        # 初始化设备与路径
+        self.rm_model.load_device_info()
+        self.rm_model.set_up_audio_store_zero()
+        self.rm_model.init_store_path()
+        self.rm_view.audio_store_path_lineedit.setText(self.rm_model.audio_store_path)
+        # 构建视图（自身设置布局，不依赖外部容器）
+        self.rm_view.build(
+            on_record=self.record_audio,
+            on_stop=self.stop_record,
+            on_select_path=self.select_store_path,
+            on_about=self.rm_view.on_about_dy,
+            on_audio_path_changed=self.change_audio_store_path,
+        )
+        self.rm_view.view_shown.connect(self.rm_controller.on_show)
 
     def create_right_layout(self):
         self.sys_information_textedit.setFixedHeight(330)
@@ -106,11 +134,33 @@ class CenterWidget(QWidget):
         log_controller.info("程序启动")
 
     def closeEvent(self, event):
-        self.main_widget.audio_manager.stop_recording()
-        self.main_widget.audio_manager.quit()
-        self.main_widget.audio_manager.wait()
+        self.rm_model.audio_manager.stop_recording()
+        self.rm_model.audio_manager.quit()
+        self.rm_model.audio_manager.wait()
         self.data_struct.record_flag = False
         event.accept()
+
+    # 以下方法把交互转发给 Controller/View/Model，本类不再做额外封装
+    def _emit_analysis_completed(self, results):
+        self.analysis_completed.emit(results)
+
+    def record_audio(self):
+        self.rm_controller.record_audio()
+
+    def stop_record(self):
+        self.rm_controller.stop_record()
+
+    def select_store_path(self):
+        self.rm_controller.select_store_path()
+
+    @staticmethod
+    def save_store_path_to_txt(path):
+        RecordMachineAudioModel.save_store_path_to_txt(path)
+
+    def change_audio_store_path(self):
+        sender = self.sender()
+        text = sender.text() if sender else ""
+        self.rm_controller.on_audio_path_changed(text)
 
 
 if __name__ == "__main__":

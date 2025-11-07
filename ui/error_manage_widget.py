@@ -28,12 +28,12 @@
 
 import sys
 
-from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtCore import Qt, QSize, QEvent
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTableView, QHeaderView
 from PyQt5.QtWidgets import QItemDelegate, QPushButton, QComboBox
 
-from base.audio_data_manager import get_warning_audio_data_from_db
+from base.audio_data_manager import get_warning_audio_data_from_db, update_warning_audio_data
 from consts import ui_style_const
 
 
@@ -45,6 +45,9 @@ class ErrorManageWidget(QWidget):
         self.error_manage_table.setIconSize(QSize(25, 25))
         self.error_manage_model = CustomStandardItemModel(0, 10, [9])
         self.error_manage_table.setModel(self.error_manage_model)
+
+        # 监听单元格编辑变化（用于“备注”列）
+        self.error_manage_model.dataChanged.connect(self.on_model_data_changed)
 
         self.init_ui()
 
@@ -58,6 +61,8 @@ class ErrorManageWidget(QWidget):
             """QTableView::item {
                 border-top: 1px solid rgb(130, 135, 144);
                 color: black;
+                padding-left: 10px;
+                padding-right: 10px;
             }"""
         )
         self.error_manage_table.model().setHorizontalHeaderLabels(
@@ -75,10 +80,16 @@ class ErrorManageWidget(QWidget):
             ]
         )
         header = self.error_manage_table.horizontalHeader()
-        for i in range(self.error_manage_model.columnCount()):
-            header.setSectionResizeMode(i, QHeaderView.Interactive)
-        # header.setStretchLastSection(True)
-        header.setSectionResizeMode(6, QHeaderView.Stretch)
+        # for i in range(self.error_manage_model.columnCount()):
+        #     header.setSectionResizeMode(i, QHeaderView.Interactive)
+        # # header.setStretchLastSection(True)
+        # header.setSectionResizeMode(6, QHeaderView.Stretch)
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        # 空白单元格（按钮列、下拉列）至少 150 像素
+        # header.setSectionResizeMode(7, QHeaderView.Interactive)
+        header.setSectionResizeMode(8, QHeaderView.Interactive)
+        # self.error_manage_table.setColumnWidth(7, 150)
+        self.error_manage_table.setColumnWidth(8, 100)
 
         # 数据加载改为显式接口调用：请调用 load_warning_data()
 
@@ -100,11 +111,12 @@ class ErrorManageWidget(QWidget):
             pass
 
         if result:
-            self.add_warning_data(result)
+            reversed_result = list(reversed(result))
+            self.add_warning_data(reversed_result)
         # 组件（按钮/下拉）依赖数据存在后再设置
         self.setup_buttons_in_btn_column()
         if result:
-            self.setup_combobox(result)
+            self.setup_combobox(reversed_result)
 
     def add_warning_data(self, audio_datas):
         for audio_data in audio_datas:
@@ -174,8 +186,18 @@ class ErrorManageWidget(QWidget):
             combobox = QComboBox()
             combobox.addItems(["确认已处理", "确认未处理", "未确认", "忽略"])
             combobox.setStyleSheet(ui_style_const.qcombobox_stytle)
-            combobox.setCurrentText(audio_datas[row][8])
+            combobox.setCurrentText(audio_datas[row][7])
+            # 禁用滚轮修改选项
+            combobox.installEventFilter(self)
+            # 下拉变更即写库
+            combobox.currentTextChanged.connect(lambda text, r=row: self.on_deal_status_changed(r, text))
             self.error_manage_table.setIndexWidget(index, combobox)
+
+    def eventFilter(self, obj, event):
+        # 屏蔽所有 QComboBox 的滚轮事件，防止意外修改选项
+        if isinstance(obj, QComboBox) and event.type() == QEvent.Wheel:
+            return True
+        return super().eventFilter(obj, event)
 
     def setup_buttons_in_btn_column(self):
         table = self.error_manage_table  # 修正变量名
@@ -201,9 +223,42 @@ class ErrorManageWidget(QWidget):
 
     def on_deal_btn_clicked(self, row):
         print(f"处理第 {row} 行")
+        # 同步更新下拉框（将触发写库）
+        model = self.error_manage_table.model()
+        combo_index = model.index(row, 8)
+        combo = self.error_manage_table.indexWidget(combo_index)
+        if isinstance(combo, QComboBox):
+            combo.setCurrentText("确认已处理")
 
     def on_ignore_btn_clicked(self, row):
         print(f"忽略第 {row} 行")
+        # 同步更新下拉框（将触发写库）
+        model = self.error_manage_table.model()
+        combo_index = model.index(row, 8)
+        combo = self.error_manage_table.indexWidget(combo_index)
+        if isinstance(combo, QComboBox):
+            combo.setCurrentText("忽略")
+
+    def on_deal_status_changed(self, row: int, new_text: str):
+        # 使用关键信息定位记录
+        model = self.error_manage_model
+        warning_time = model.index(row, 0).data()
+        file_name = model.index(row, 4).data()
+        if warning_time and file_name:
+            update_warning_audio_data({"deal_status": new_text}, {"warning_time": warning_time, "file_name": file_name})
+
+    def on_model_data_changed(self, top_left, bottom_right, roles=None):
+        # 仅处理“备注”列（索引 9）的编辑写库
+        del roles  # 未使用
+        if top_left.column() != 9:
+            return
+        row = top_left.row()
+        model = self.error_manage_model
+        description = model.index(row, 9).data()
+        warning_time = model.index(row, 0).data()
+        file_name = model.index(row, 4).data()
+        if warning_time and file_name:
+            update_warning_audio_data({"description": description}, {"warning_time": warning_time, "file_name": file_name})
 
     def show(self):
         self.load_warning_data()

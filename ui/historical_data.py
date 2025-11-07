@@ -76,6 +76,8 @@ class HistoryDataWindow(QDialog):
             """QTableView::item {
                     border-top: 1px solid rgb(130, 135, 144);
                     color: black;
+                    padding-left: 10px;
+                    padding-right: 10px;
             }"""
         )
         self.history_data_table.model().setHorizontalHeaderLabels(
@@ -83,10 +85,17 @@ class HistoryDataWindow(QDialog):
         )
         # self.history_data_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         header = self.history_data_table.horizontalHeader()
-        for i in range(self.history_data_model.columnCount()):
-            header.setSectionResizeMode(i, QHeaderView.Interactive)
-        # header.setStretchLastSection(True)
-        header.setSectionResizeMode(5, QHeaderView.Stretch)
+        # for i in range(self.history_data_model.columnCount()):
+        #     header.setSectionResizeMode(i, QHeaderView.Interactive)
+        # # header.setStretchLastSection(True)
+        # header.setSectionResizeMode(5, QHeaderView.Stretch)
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.Interactive)
+        header.setSectionResizeMode(5, QHeaderView.Interactive)
+        self.history_data_table.setColumnWidth(3, 100)
+        self.history_data_table.setColumnWidth(4, 100)
+        self.history_data_table.setColumnWidth(5, 100)
 
         # 数据加载改为显式接口调用：请调用 load_history_data()
 
@@ -107,7 +116,8 @@ class HistoryDataWindow(QDialog):
             pass
 
         if result:
-            self.add_history_data(result)
+            reversed_result = list(reversed(result))
+            self.add_history_data(reversed_result)
         self.history_data_table.viewport().update()
 
     def add_history_data(self, audio_datas):

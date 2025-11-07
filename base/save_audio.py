@@ -38,7 +38,7 @@ from typing import Optional
 
 import numpy as np
 
-from base.db_manager import DataManage
+from base.database.db_manager import DataManage
 from consts import db_consts
 
 from base.audio_data_manager import save_audio_data

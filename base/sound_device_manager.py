@@ -1,9 +1,9 @@
 import os
 
+# 必须在导入 sounddevice 前设置后端相关环境变量
 os.environ["SD_ENABLE_ASIO"] = "1"
 
 import sounddevice as sd
-
 
 def get_default_device():
     return sd.query_devices(sd.default.device[0])
@@ -12,6 +12,9 @@ def get_default_device():
 def change_default_device(mic_id, speaker_id):
     sd.default.device = (mic_id, speaker_id)
 
+def change_default_mic(mic_id):
+    _, out_id = sd.default.device
+    sd.default.device = (mic_id, out_id)
 
 def get_api_info(api_index=None):
     return sd.query_hostapis(api_index)

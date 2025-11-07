@@ -4,6 +4,7 @@ import os
 import json
 
 from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenuBar, QStatusBar, QLabel, QAction
 
 from base.data_struct.data_deal_struct import DataDealStruct
@@ -111,14 +112,14 @@ def evaluate_results_with_randoms(results):
     # 对每个通道根据随机数进行结果调整和评价赋值
     for ch in range(num_channels):
         r = random_values[ch]
-        if r > 0.45:
+        if r > 0.25:
             desired = "OK"
             evaluations[ch] = "良好"
         else:
             desired = "NG"
-            if r > 0.35:
+            if r > 0.15:
                 evaluations[ch] = "一般"
-            elif r > 0.25:
+            elif r > 0.07:
                 evaluations[ch] = "警告"
             else:
                 evaluations[ch] = "错误"
@@ -160,6 +161,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.data_struct = DataDealStruct()
         self.model_analysis_config: dict = dict()
+        self.setWindowIcon(QIcon(DEFAULT_DIR + "ui/ui_pic/sys_ico/icon.ico"))
 
         self.init_ui()
         self.load_model_analysis_config()
@@ -172,7 +174,7 @@ class MainWindow(QMainWindow):
         self.set_menu_bar()
 
         try:
-            self.center_widget.main_widget.analysis_completed.connect(self.on_analysis_completed)
+            self.center_widget.analysis_completed.connect(self.on_analysis_completed)
         except Exception:
             pass
 
@@ -196,8 +198,8 @@ class MainWindow(QMainWindow):
         self.setMenuBar(menu_bar)
         # 连接录音开始/停止信号以禁用/启用菜单
         try:
-            self.center_widget.main_widget.recording_started.connect(lambda: self.menuBar().setEnabled(False))
-            self.center_widget.main_widget.recording_stopped.connect(lambda: self.menuBar().setEnabled(True))
+            self.center_widget.recording_started.connect(lambda: self.menuBar().setEnabled(False))
+            self.center_widget.recording_stopped.connect(lambda: self.menuBar().setEnabled(True))
         except Exception:
             pass
 
@@ -205,7 +207,7 @@ class MainWindow(QMainWindow):
         json_path = DEFAULT_DIR + "ui/ui_config/models.json"
         model_store = AIModelStore.from_json_or_default(json_path)
 
-        view = AIConfigView(forced_sample_rate=self.center_widget.main_widget.sampling_rate)
+        view = AIConfigView(forced_sample_rate=self.center_widget.rm_model.sampling_rate)
         controller = AIConfigController(
             model_store,
             view,
@@ -225,12 +227,12 @@ class MainWindow(QMainWindow):
         with open(analysis_json_path, "w", encoding="utf-8") as f:
             json.dump(self.model_analysis_config, f, ensure_ascii=False, indent=4)
 
-        self.center_widget.main_widget.build_audio_segment_extractor(
+        self.center_widget.rm_controller.build_audio_segment_extractor(
             extract_flag=bool(self.model_analysis_config.get("use_ai", False)),
             extract_interval=float(self.model_analysis_config.get("analysis_interval", 2.0)),
             segment_duration=float(self.model_analysis_config.get("time", 4.0)),
         )
-        self.center_widget.main_widget.update_model_name(self.model_analysis_config.get("model_name", ""))
+        self.center_widget.rm_controller.update_model_name(self.model_analysis_config.get("model_name", ""))
 
     def load_model_analysis_config(self):
         analysis_json_path = os.path.normpath(DEFAULT_DIR + "ui/ui_config/model_analysis.json")
@@ -239,19 +241,19 @@ class MainWindow(QMainWindow):
                 self.model_analysis_config = json.load(f)
         except Exception:
             pass
-        self.center_widget.main_widget.build_audio_segment_extractor(
+        self.center_widget.rm_controller.build_audio_segment_extractor(
             extract_flag=bool(self.model_analysis_config.get("use_ai", False)),
             extract_interval=float(self.model_analysis_config.get("analysis_interval", 3.5)),
             segment_duration=float(self.model_analysis_config.get("time", 4.0)),
         )
-        self.center_widget.main_widget.update_model_name(self.model_analysis_config.get("model_name", ""))
+        self.center_widget.rm_controller.update_model_name(self.model_analysis_config.get("model_name", ""))
 
     def on_analysis_completed(self, results):
         """接收每轮多通道分析结果，可在此更新UI或记录日志。"""
         try:
             # 未录音则不处理、且保持指示灯关闭
             try:
-                if not self.center_widget.main_widget.data_struct.record_flag:
+                if not self.center_widget.rm_model.data_struct.record_flag:
                     self._update_lights_off()
                     return
             except Exception:
@@ -260,7 +262,7 @@ class MainWindow(QMainWindow):
             # 在解析items前，基于随机数调整每通道OK/NG并生成评价列表
             try:
                 self._last_channel_evaluations = evaluate_results_with_randoms(results)
-                print(self._last_channel_evaluations)
+                # print(self._last_channel_evaluations)
             except Exception:
                 self._last_channel_evaluations = []
             items = parse_raw_input(results)
@@ -268,12 +270,12 @@ class MainWindow(QMainWindow):
             self._update_lights_ui_from_engine()
 
             # 若启用AI分析：对NG通道保存本次被分析的片段并写入数据库
-            se = getattr(self.center_widget.main_widget, "segment_extractor", None)
+            se = getattr(self.center_widget.rm_model, "segment_extractor", None)
             if se is not None and getattr(se, "is_running", False):
 
                 segs = se.get_extracted_segments()
                 info = se.get_segment_info()
-                sr = int(info.get("sampling_rate") or getattr(self.center_widget.main_widget, "sampling_rate", 44100))
+                sr = int(info.get("sampling_rate") or getattr(self.center_widget.rm_model, "sampling_rate", 44100))
                 dur = float(info.get("segment_duration") or 4.0)
                 if segs is not None:
                     try:
@@ -318,7 +320,7 @@ class MainWindow(QMainWindow):
         """聚合显示：若任一通道红灯亮 -> 总红灯亮；否则若存在 GREEN -> 总绿灯亮；否则全灰。"""
         # 未录音则关闭灯
         try:
-            if not self.center_widget.main_widget.data_struct.record_flag:
+            if not self.center_widget.rm_model.data_struct.record_flag:
                 self._update_lights_off()
                 return
         except Exception:
@@ -327,9 +329,9 @@ class MainWindow(QMainWindow):
         # 若尚无任何数据/通道，默认点亮绿灯
         if not snapshot:
             try:
-                w = self.center_widget.main_widget
-                w.set_light_color(w.red_light, "gray")
-                w.set_light_color(w.green_light, "green")
+                v = self.center_widget.rm_view
+                v.set_light_color(v.red_light, "gray")
+                v.set_light_color(v.green_light, "green")
             except Exception:
                 pass
             return
@@ -337,24 +339,24 @@ class MainWindow(QMainWindow):
         any_green = any(v.get("color") == "GREEN" for v in snapshot.values())
 
         try:
-            w = self.center_widget.main_widget
+            v = self.center_widget.rm_view
             if any_red:
-                w.set_light_color(w.red_light, "red")
-                w.set_light_color(w.green_light, "gray")
+                v.set_light_color(v.red_light, "red")
+                v.set_light_color(v.green_light, "gray")
             elif any_green:
-                w.set_light_color(w.red_light, "gray")
-                w.set_light_color(w.green_light, "green")
+                v.set_light_color(v.red_light, "gray")
+                v.set_light_color(v.green_light, "green")
             else:
-                w.set_light_color(w.red_light, "gray")
-                w.set_light_color(w.green_light, "gray")
+                v.set_light_color(v.red_light, "gray")
+                v.set_light_color(v.green_light, "gray")
         except Exception:
             pass
 
     def _update_lights_off(self):
         try:
-            w = self.center_widget.main_widget
-            w.set_light_color(w.red_light, "gray")
-            w.set_light_color(w.green_light, "gray")
+            v = self.center_widget.rm_view
+            v.set_light_color(v.red_light, "gray")
+            v.set_light_color(v.green_light, "gray")
         except Exception:
             pass
 
@@ -376,9 +378,9 @@ class MainWindow(QMainWindow):
         self.setStatusBar(statusbar)
 
     def closeEvent(self, event):
-        self.center_widget.main_widget.audio_manager.stop_recording()
-        self.center_widget.main_widget.audio_manager.quit()
-        self.center_widget.main_widget.audio_manager.wait()
+        self.center_widget.rm_model.audio_manager.stop_recording()
+        self.center_widget.rm_model.audio_manager.quit()
+        self.center_widget.rm_model.audio_manager.wait()
         self.data_struct.record_flag = False
         event.accept()
 

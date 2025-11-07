@@ -3,6 +3,7 @@ import json
 from dataclasses import dataclass
 from typing import List, Optional, Callable
 
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,6 +19,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 from ui.ai.register_ai_model import ModelManagerApp
+from consts.running_consts import DEFAULT_DIR
 
 
 # ========================= Model ========================= #
@@ -156,6 +158,7 @@ class AIConfigView(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("AI 分析参数配置")
+        self.setWindowIcon(QIcon(DEFAULT_DIR + "ui/ui_pic/sys_ico/icon.ico"))
         self.setModal(True)
 
         self._forced_sample_rate: Optional[int] = forced_sample_rate
@@ -182,7 +185,7 @@ class AIConfigView(QDialog):
         self.spin_interval.setRange(2.0, 20.0)
         self.spin_interval.setSingleStep(0.1)
         self.spin_interval.setDecimals(1)
-        self.spin_interval.setValue(2.0)
+        self.spin_interval.setValue(3.5)
         self.spin_interval.setSuffix("s")
 
         # Buttons

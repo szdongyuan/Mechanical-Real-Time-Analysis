@@ -1,6 +1,7 @@
-import sounddevice as sd
 import numpy as np
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
+
+from base.sound_device_manager import sd
 
 
 class AudioPlayer(QObject):

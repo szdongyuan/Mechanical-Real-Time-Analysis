@@ -7,6 +7,8 @@ from ui.splash_screen_window import Splash, LoaderThread
 
 class MainWindowLauncher(object):
     def __init__(self):
+        import multiprocessing as mp
+        mp.freeze_support() 
         self.app = QApplication(sys.argv)
         self.splash = Splash()
         self.splash.show()

@@ -672,6 +672,7 @@ class ModelManagerApp:
         self.repo.load()
         self.view = ModelManagerView()
         self.controller = ModelManagerController(self.repo, self.view)
+        self.view.setWindowIcon(QIcon(DEFAULT_DIR + "ui/ui_pic/sys_ico/icon.ico"))
 
     def run(self) -> Tuple[int, List[dict]]:
         self.view.resize(800, 500)

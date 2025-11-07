@@ -2,11 +2,11 @@ import multiprocessing
 import os
 
 import numpy as np
-import sounddevice as sd
 from scipy import signal
 from scipy.io import wavfile
 
 from base.log_manager import LogManager
+from base.sound_device_manager import sd
 from consts import error_code
 
 

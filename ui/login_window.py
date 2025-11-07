@@ -7,7 +7,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QSizePolicy, QVBoxLayout
 
-from base.db_manager import DataManage
+from base.database.db_manager import DataManage
 from base.log_manager import LogManager
 from consts import error_code, db_consts, ui_style_const
 from consts.running_consts import DEFAULT_DIR
