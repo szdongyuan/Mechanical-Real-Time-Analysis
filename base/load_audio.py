@@ -42,7 +42,8 @@ def get_audio_files_and_labels(signal_path, sr=None, with_labels=-1, **kwargs):
         single_audio_path = os.path.join(signal_path, signal_file).replace("\\", "/")
 
         try:
-            y, sr = librosa.load(single_audio_path, sr=sr)
+            y, sr = librosa.load(single_audio_path, sr=sr, mono=False)
+            y = y.T
             if fs and sr != fs[-1]:
                 pass
             else:

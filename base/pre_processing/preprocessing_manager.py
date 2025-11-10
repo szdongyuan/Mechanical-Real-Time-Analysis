@@ -2,6 +2,7 @@ import numpy as np
 
 from base.pre_processing.audio_equalizer import AudioEqualizer
 from base.pre_processing.audio_feature_extraction import AudioFeatureExtraction
+from base.pre_processing.custom_pipelines import CustomPipelines
 from base.pre_processing.data_alignment import DataAlignment
 from base.pre_processing.emphasis import Emphasis
 from base.pre_processing.split_repeat_signal import SplitRepeatSignal
@@ -53,27 +54,13 @@ class PreprocessingManager(object):
             "apply_equalizer": AudioEqualizer.apply_equalizer,
             "random_fluctuation": Emphasis.random_fluctuation,
             "split_repeat_signal": SplitRepeatSignal.split_repeat_signal,
+            "fusion_ae_preprocess": CustomPipelines.fusion_autoencoder_preprocess,
             "sequence_process": cls.sequence_process,
             "stack_process": cls.stack_process,
         }
         return process_mapping.get(process_method)
 
     def process(self, signal, sr, **kwargs):
-        """
-            The original audio signal is processed using the specified preprocessing method.
-
-            Args:
-            - signal: array
-                The original audio signal data.
-            - sr: int
-                The sample rate of original audio signal data.
-            - **kwargs: dictionary
-                Additional parameters of the preprocessing method.
-
-            Returns:
-                Return the preprocessed audio signal data if the specified preprocessing method can be found
-                otherwise return the original signal.
-        """
         process_method = kwargs.get("preprocess_method")
         if not process_method:
             return signal
@@ -83,15 +70,18 @@ class PreprocessingManager(object):
         if not process_handler:
             return signal
 
-        if signal.ndim == 1:
+        input_format = kwargs.get("input_format", "1D")
+        if input_format == "2D":
             return process_handler(signal, sr, **process_kwargs)
-
-        process_segments = []
-        for segment in signal:
-            process_segment = process_handler(segment, sr, **process_kwargs)
-            process_segments.append(process_segment)
-        return np.stack(process_segments, axis=-1)
-
+        elif input_format == "1D":
+            signal_1d = None
+            if signal.shape[1] == 1:
+                signal_1d = signal.squeeze()
+            else:
+                signal_1d = signal[:, 0]
+            return process_handler(signal_1d, sr, **process_kwargs)
+        else:
+            raise ValueError(f"未知的 input_format: '{input_format}'。必须是 '1D' 或 '2D'。")
 
     @staticmethod
     def sequence_process(signal, sr, **kwargs):

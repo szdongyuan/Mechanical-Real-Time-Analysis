@@ -17,7 +17,7 @@ def predict(predict_dir,
                            "result": [[ret]]})
     signals, file_names, fs, _ = ret
 
-    ret_str = predict_from_audio(signals, file_names, fs, load_model_path=None, model=None, **kwargs)
+    ret_str = predict_from_audio(signals, file_names, fs, load_model_path=load_model_path, model=model, **kwargs)
 
     return ret_str
 

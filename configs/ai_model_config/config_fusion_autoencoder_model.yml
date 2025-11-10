@@ -1,0 +1,85 @@
+# ---------------------------------------------------
+# 最终的统一预测配置文件
+# ---------------------------------------------------
+
+- module_name: "preprocess"
+  module_config:
+    preprocess_method: "fusion_ae_preprocess"
+    input_format: "2D"
+    preprocess_param:
+      channel_config:
+        case4: [[1], 3]        # 4 channels: Vib=[Ch 1], Mic=Ch 3
+        case2: [[0], 1]
+        vib_idxs: [1]
+        mic_idx: 3
+      fix_len_params:
+        seconds: 10.0
+      separation_params:
+        n_fft: 2048
+        hop_length: 512
+        center: False
+        vib_combine_strategy: "first" # 因为我们只用一个 vib 通道
+        # vib_weights: [1.0]          # (如果 strategy=weighted_average)
+        mask_threshold: 0.1
+        mask_floor: 0.1
+      spec_params:
+        spec_type: "log_power"
+        norm_type: "sample_min_max"
+        time_series_first: False # (H, W, C)
+        extraction_kwargs:
+          n_fft: 2048
+          hop_length: 512
+          center: False
+
+# ---------------------------------------------------
+- module_name: "model"
+  module_config:
+
+    model_name: "PipelineManager"
+
+    model_init_config:
+
+      # --- 阶段 1: 特征提取器 (AE) ---
+      stage1_config:
+        model_name: "FusionAutoencoderManager"
+        model_init_config:
+          input_shape_vib: [1025, 858, 1]
+          input_shape_mic: [1025, 858, 1]
+          encoder_layers_vib:
+            - {layer_name: "Conv2D", layer_kwargs: {filters: 64, kernel_size: [41, 22], strides: [41, 22], padding: "valid"}}
+            - {layer_name: "CnnSeBlock", layer_kwargs: {filters: 64, reduction: 4}}
+            - {layer_name: "CnnSeBlock", layer_kwargs: {filters: 64, reduction: 4}}
+            - {layer_name: "CnnSeBlock", layer_kwargs: {filters: 64, reduction: 4}}
+            - {layer_name: "CnnSeBlock", layer_kwargs: {filters: 64, reduction: 4}}
+            - {layer_name: "Reshape", layer_kwargs: {target_shape: [975, 64]}}
+          encoder_layers_mic:
+            - { layer_name: "Conv2D", layer_kwargs: { filters: 64, kernel_size: [ 41, 22 ], strides: [ 41, 22 ], padding: "valid" } }
+            - { layer_name: "CnnSeBlock", layer_kwargs: { filters: 64, reduction: 4 }}
+            - { layer_name: "CnnSeBlock", layer_kwargs: { filters: 64, reduction: 4 }}
+            - { layer_name: "CnnSeBlock", layer_kwargs: { filters: 64, reduction: 4 }}
+            - { layer_name: "CnnSeBlock", layer_kwargs: { filters: 64, reduction: 4 }}
+            - { layer_name: "Reshape", layer_kwargs: { target_shape: [ 975, 64 ] }}
+          fusion_config:
+            name: "fusion_module"
+            num_layers: 2
+            embed_dim: 64
+            num_heads: 4
+          decoder_layers_vib: []
+          decoder_layers_mic: []
+          pool_features: True
+          compile_config: {}
+
+      # --- 阶段 2: 异常检测器 (GMM) ---
+      stage2_config:
+        model_name: "GMMManager"
+        model_init_config:
+          k_search_range: [1, 9]
+          gmm_params: {covariance_type: "full", reg_covar: 1e-3, n_init: 10, random_state: 0}
+        model_fit_config:
+          threshold_mode: "mad"
+          k_mad: 3.0
+
+    model_fit_config: {}
+
+    model_predict_config:
+      manual_threshold: 299.708
