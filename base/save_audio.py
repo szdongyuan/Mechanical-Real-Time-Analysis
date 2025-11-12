@@ -58,7 +58,7 @@ def _now_str() -> str:
 def save_warning_wav(
     segment: np.ndarray,
     sampling_rate: int,
-    channel_index: int,
+    channel_index: int = None,
     base_dir: Optional[str] = None,
     timestamp: Optional[str] = None,
 ) -> str:
@@ -71,7 +71,10 @@ def save_warning_wav(
     _ensure_dir(base_dir)
 
     ts = timestamp or _now_str()
-    file_name = f"{ts}-{channel_index}.wav"
+    if channel_index is None:
+        file_name = f"{ts}.wav"
+    else:
+        file_name = f"{ts}-{channel_index}.wav"
     abs_path = os.path.normpath(os.path.join(base_dir, file_name))
 
     save_audio_data(segment, sampling_rate, abs_path)
@@ -116,11 +119,22 @@ def insert_warning_record(
         db.insert_data_into_db("warning_audio_data_table", db_consts.WARNING_COLUMNS, [data_row])
 
 
+# def save_and_log_warning_segment(
+#     segment: np.ndarray,
+#     sampling_rate: int,
+#     channel_index: int,
+#     segment_duration_sec: float,
+#     base_dir: Optional[str] = None,
+#     warning_level: str = "一般",
+#     charge_person: str = "",
+#     deal_status: str = "未确认",
+#     description: Optional[str] = None,
+# ) -> str:
 def save_and_log_warning_segment(
     segment: np.ndarray,
     sampling_rate: int,
-    channel_index: int,
     segment_duration_sec: float,
+    channel_index: int = None,
     base_dir: Optional[str] = None,
     warning_level: str = "一般",
     charge_person: str = "",

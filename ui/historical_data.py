@@ -36,6 +36,7 @@
 
 import sys
 import librosa
+import numpy as np
 
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QIcon
@@ -181,7 +182,7 @@ class HistoryDataWindow(QDialog):
         return None
 
     def load_wave_data(self, wave_file_path):
-        wave_data = librosa.load(wave_file_path, sr=44100, mono=False)[0]
+        wave_data = librosa.load(wave_file_path, sr=44100, mono=False, dtype=np.int16)[0]
         if len(wave_data.shape) == 2:
             wave_data = wave_data.T
         return wave_data

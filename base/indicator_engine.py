@@ -4,7 +4,6 @@ from typing import Dict, List, Optional
 
 @dataclass(frozen=True)
 class PredictionItem:
-    channel: int
     result: str  # "OK" / "NG"
     score: Optional[float] = None
 
@@ -32,7 +31,7 @@ class RedLightController:
         return self.remaining_seconds > 0.0
 
 
-class ChannelIndicator:
+class ColorIndicator:
     """
     每通道控制器：当前需求仅红灯有时长叠加；绿灯由上层根据“是否存在 NG”决定显示。
     后续可在不修改本类的前提下，组合更多颜色控制器（符合 OCP）。
@@ -66,44 +65,30 @@ class IndicatorEngine:
     - render_snapshot: 返回当前每通道的红灯状态
     """
     def __init__(self, red_add_seconds: float = 0.2):
-        self._channels: Dict[int, ChannelIndicator] = {}
+        self._colorindicator: ColorIndicator = ColorIndicator(red_add_seconds=float(red_add_seconds))
         self._red_add_seconds = float(red_add_seconds)
-
-    def _ensure_channel(self, channel: int):
-        if channel not in self._channels:
-            self._channels[channel] = ChannelIndicator(red_add_seconds=self._red_add_seconds)
 
     def process_predictions(self, items: List[PredictionItem]):
         for item in items:
-            self._ensure_channel(item.channel)
-            self._channels[item.channel].on_event(item.result)
+            self._colorindicator.on_event(item.result)
 
     def tick(self, step_seconds: float):
-        for indicator in self._channels.values():
-            indicator.tick(step_seconds)
+        self._colorindicator.tick(step_seconds)
 
     def has_any_red_on(self) -> bool:
-        return any(ind.is_red_on() for ind in self._channels.values())
+        return self._colorindicator.is_red_on()
 
-    def render_snapshot(self) -> Dict[int, Dict[str, float]]:
+    def render_snapshot(self) -> Dict[str, float]:
         return {
-            ch: {
-                "red_remaining": ind.red.remaining_seconds,
-                "color": ind.current_color(),
-            }
-            for ch, ind in sorted(self._channels.items())
+            "red_remaining": self._colorindicator.red.remaining_seconds,
+            "color": self._colorindicator.current_color(),
         }
 
 
 def parse_raw_input(raw: List[dict]) -> List[PredictionItem]:
     items: List[PredictionItem] = []
     for entry in raw:
-        try:
-            ch = int(entry.get("channel"))
-        except Exception:
-            continue
-        data = entry.get("data", {})
-        res_list = data.get("result") or []
+        res_list = entry.get("result") or []
         if not res_list:
             continue
         first = res_list[0]
@@ -114,7 +99,7 @@ def parse_raw_input(raw: List[dict]) -> List[PredictionItem]:
                 score = float(first[2])
             except Exception:
                 score = None
-        items.append(PredictionItem(channel=ch, result=result_str, score=score))
+        items.append(PredictionItem(result=result_str, score=score))
     return items
 
 

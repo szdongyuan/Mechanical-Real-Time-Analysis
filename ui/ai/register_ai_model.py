@@ -39,6 +39,8 @@ class ModelItem:
     input_dim: str  # 形如 "176400 x 1"
     model_path: str
     config_path: str = ""
+    gmm_path: str = ""
+    scaler_path: str = ""
     copied_from_source: Optional[str] = None  # 仅“复制模型”产生：源模型文件路径
     copied_dest_dir: Optional[str] = None     # 仅“复制模型”产生：目标保存目录
     registered_from_file: bool = False        # 仅“注册模型”产生：是否来自文件注册
@@ -97,6 +99,8 @@ class AIModelsRepository:
                         input_dim=str(item.get("input_dim", "")),
                         model_path=str(item.get("path", "")),
                         config_path=str(item.get("config_path", "")),
+                        gmm_path=str(item.get("gmm_path", "")),
+                        scaler_path=str(item.get("scaler_path", "")),
                     )
                 )
                 continue
@@ -108,6 +112,8 @@ class AIModelsRepository:
                         input_dim=str(item.get("input_dim", "")),
                         model_path=str(item.get("model_path", "")),
                         config_path=str(item.get("config_path", "")),
+                        gmm_path=str(item.get("gmm_path", "")),
+                        scaler_path=str(item.get("scaler_path", "")),
                     )
                 )
                 continue
@@ -131,6 +137,8 @@ class AIModelsRepository:
                     "input_dim": m.input_dim,
                     "model_path": m.model_path,
                     "config_path": m.config_path,
+                    "gmm_path": m.gmm_path,
+                    "scaler_path": m.scaler_path,
                 }
                 for m in self.models
             ]
@@ -141,6 +149,8 @@ class AIModelsRepository:
                     "input_dim": m.input_dim,
                     "path": m.model_path,
                     "config_path": m.config_path,
+                    "gmm_path": m.gmm_path,
+                    "scaler_path": m.scaler_path,
                 }
                 for m in self.models
             ]
@@ -295,7 +305,7 @@ class ModelEditDialog(QDialog):
             if directory:
                 self.path_edit.setText(directory)
         else:
-            file_path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", os.getcwd(), "所有文件 (*.*)")
+            file_path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", os.getcwd(), "KERAS (*.keras)")
             if file_path:
                 self.path_edit.setText(file_path)
                 # 自动将文件名（不含扩展名）填入模型名称
@@ -493,6 +503,10 @@ class ModelManagerController:
         self.repo = repo
         self.view = view
 
+        # 伴随文件命名后缀
+        self._gmm_suffix = "_gmm.joblib"
+        self._scaler_suffix = "_scaler.joblib"
+
         # 初始化表格
         self._init_table()
 
@@ -541,6 +555,49 @@ class ModelManagerController:
         return False
 
     # -------- 事件处理 -------- #
+    def _find_companion_files(self, keras_path: str) -> Tuple[str, str]:
+        """
+        基于“同前缀 + 固定后缀关键字”规则在与 keras 文件相同目录下查找伴随文件：
+        - 仅匹配去扩展名后以 'gmm' 或 'scaler' 结尾的文件（不限定扩展名大小写）；
+        - 以去掉关键字后的“前缀”与 keras 基名的最长公共前缀长度为相似度，分别选出最佳 gmm 与 scaler；
+        - 若某类未找到则返回空字符串。
+        """
+        try:
+            directory = os.path.dirname(os.path.abspath(keras_path))
+            keras_file = os.path.basename(keras_path)
+            base = os.path.splitext(keras_file)[0]
+
+            # 这段代码的作用是初始化用于记录最佳匹配gmm/scaler文件路径和其对应分数（相似度评分）的变量。
+            # best_gmm_path: 保存评分最高的gmm文件全路径
+            # best_gmm_score: 当前找到的最佳gmm文件的前缀相似度分数，初始为-1
+            # best_scaler_path: 保存评分最高的scaler文件全路径
+            # best_scaler_score: 当前找到的最佳scaler文件的前缀相似度分数，初始为-1
+            best_gmm_path, best_gmm_score = "", -1
+            best_scaler_path, best_scaler_score = "", -1
+
+            for fname in os.listdir(directory):
+                full_path = os.path.join(directory, fname)
+                if fname == keras_file or not os.path.isfile(full_path):
+                    continue
+                fbase = os.path.splitext(fname)[0]
+                lname = fbase.lower()
+
+                if lname.endswith("gmm"):
+                    stem = fbase[: -3].rstrip("_-. ")
+                    score = len(os.path.commonprefix([stem, base]))
+                    if score > best_gmm_score:
+                        best_gmm_score = score
+                        best_gmm_path = full_path
+                if lname.endswith("scaler"):
+                    stem = fbase[: -len("scaler")].rstrip("_-. ")
+                    score = len(os.path.commonprefix([stem, base]))
+                    if score > best_scaler_score:
+                        best_scaler_score = score
+                        best_scaler_path = full_path
+
+            return best_gmm_path, best_scaler_path
+        except Exception:
+            return "", ""
     def on_checkbox_changed(self, row: int, state: int) -> None:
         if state == Qt.Checked:
             self.repo.set_selected_index(row)
@@ -599,7 +656,16 @@ class ModelManagerController:
             if not os.path.exists(file_path):
                 self.view.show_warning("所选模型文件不存在")
                 return
-            item = ModelItem(model_name=name, input_dim=dim, model_path=file_path, config_path=config_path, registered_from_file=True)
+            gmm_path, scaler_path = self._find_companion_files(file_path)
+            item = ModelItem(
+                model_name=name,
+                input_dim=dim,
+                model_path=file_path,
+                config_path=config_path,
+                gmm_path=gmm_path,
+                scaler_path=scaler_path,
+                registered_from_file=True,
+            )
             self.repo.add_model(item)
             self._append_table_row(item, select_new=False)
 
@@ -678,7 +744,14 @@ class ModelManagerApp:
         self.view.resize(800, 500)
         code = self.view.exec_()
         models_info = [
-            {"model_name": m.model_name, "input_dim": m.input_dim, "model_path": m.model_path, "config_path": m.config_path}
+            {
+                "model_name": m.model_name,
+                "input_dim": m.input_dim,
+                "model_path": m.model_path,
+                "config_path": m.config_path,
+                "gmm_path": m.gmm_path,
+                "scaler_path": m.scaler_path,
+            }
             for m in self.repo.models
         ]
         return code, models_info

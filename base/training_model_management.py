@@ -194,6 +194,8 @@ class TrainingModelManagement(object):
                     result.append({
                         "model_path": it.get("path") or it.get("model_path"),
                         "config_path": it.get("config_path", ""),
+                        "gmm_path": it.get("gmm_path", ""),
+                        "scaler_path": it.get("scaler_path", ""),
                     })
             if result:
                 return error_code.OK, result
@@ -227,6 +229,8 @@ class TrainingModelManagement(object):
                     "input_dim": it.get("input_dim", ""),
                     "config_path": it.get("config_path", ""),
                     "model_path": it.get("path") or it.get("model_path"),
+                    "gmm_path": it.get("gmm_path", ""),
+                    "scaler_path": it.get("scaler_path", ""),
                 })
             if result:
                 return error_code.OK, result

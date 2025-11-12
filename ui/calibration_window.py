@@ -1,6 +1,5 @@
 import sys
 import time
-from datetime import datetime
 from concurrent import futures
 
 import numpy as np

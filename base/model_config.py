@@ -30,7 +30,7 @@ def init_model_from_config(**kwargs):
     return model
 
 
-def preprocess_raw_signals(raw_signals, fs, preprocess_config):
+def preprocess_raw_signals(raw_signals:list[np.ndarray], fs:list[int], preprocess_config):
     if not raw_signals:
         return np.array([])
 

@@ -13,10 +13,18 @@ from consts import db_consts
 logger = LogManager.set_log_handler("db_core")
 
 
-def save_audio_data(record_audio_data, sameple_rate, file_name):
+def save_audio_data(record_audio_data:np.float16, sameple_rate, file_name, target_bit_bepth="int16"):
     print("save_audio_data")
     try:
         deta = record_audio_data.copy().T.astype(np.float32)
+        if target_bit_bepth == "int16":
+            deta = (deta * 32768).astype(np.int16)
+        elif target_bit_bepth == "int32":
+            deta = (deta * 2147483648).astype(np.int32)
+        elif target_bit_bepth == "float32":
+            deta = deta.astype(np.float32)
+        elif target_bit_bepth == "float64":
+            deta = deta.astype(np.float64)
         wavfile.write(file_name, sameple_rate, deta)
     except Exception as e:
         logger.error(f"save_audio_data failed: {e}")

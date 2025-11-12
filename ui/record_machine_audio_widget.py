@@ -14,13 +14,14 @@
 -----------------------------------------
 - `recording_started`: 开始录音时发射。
 - `recording_stopped`: 停止录音时发射。
-- `analysis_completed(object)`: 分析结果就绪时发射，参数为结果列表（见“结果数据约定”）。
+外部传入信号
+- `_emit_analysis_completed(object)`: 分析结果就绪时发射，参数为结果列表（见“结果数据约定”）。
 
 对外方法（在 `RecordMachineAudioWidget` 上）
 -------------------------------------------
 - `update_model_name(model_name: str) -> None`: 设置/更新使用的 AI 模型名。
 - `build_audio_segment_extractor(extract_flag: bool, extract_interval: Optional[float] = None, segment_duration: Optional[float] = None) -> None`
-  配置/启用音频片段提取器；启用后提取到的片段会自动投递至分析进程并通过 `analysis_completed` 回传结果。
+  配置/启用音频片段提取器；启用后提取到的片段会自动投递至分析进程并通过 `_emit_analysis_completed` 回传结果。
 - `record_audio() -> None`: 开始录音（UI上“Record”按钮同效）。
 - `stop_record() -> None`: 停止录音（UI上“Stop”按钮同效）。
 - `save_audio_data(countdown_time: int) -> None`: 自动保存倒计时回调触发的保存逻辑（通常无需手调）。
@@ -48,7 +49,7 @@ app = QApplication([])
 w = RecordMachineAudioWidget()
 
 # 监听分析结果（每次片段完成分析后触发）
-w.analysis_completed.connect(lambda results: print("分析结果:", results))
+w._emit_analysis_completed.connect(lambda results: print("分析结果:", results))
 
 # 选择模型（可选）
 w.update_model_name("your_model_name")
@@ -62,7 +63,7 @@ app.exec_()
 
 结果数据约定
 ------------
-`analysis_completed` 发出的 `results` 为 `List[Dict]`：
+`_emit_analysis_completed` 发出的 `results` 为 `List[Dict]`：
 - `channel: int` — 通道索引
 - `data: { ret_code: int, ret_msg: str, result: list }` — 模型返回信息与结果
 
@@ -114,7 +115,7 @@ class RecordMachineAudioModel:
         self.channels = None
         self.selected_channels = list()
 
-        self.total_display_time = 600
+        self.total_display_time = 60
         self.nfft = 256
         self.fs = 44100
         self.ctx = sd._CallbackContext()
@@ -319,6 +320,8 @@ class RecordMachineAudioModel:
             item = query_result[0]
             model_path = (item.get("path") or item.get("model_path") or "").strip()
             config_path = (item.get("config_path") or "").strip()
+            gmm_path = (item.get("gmm_path") or "").strip()
+            scaler_path = (item.get("scaler_path") or "").strip()
             if not os.path.isabs(model_path):
                 really_model_path = os.path.normpath(os.path.join(DEFAULT_DIR, model_path))
             else:
@@ -327,7 +330,7 @@ class RecordMachineAudioModel:
                 really_config_path = os.path.normpath(os.path.join(DEFAULT_DIR, config_path))
             else:
                 really_config_path = os.path.normpath(config_path)
-            return error_code.OK, (really_model_path, really_config_path)
+            return error_code.OK, (really_model_path, really_config_path, gmm_path, scaler_path)
         return error_code.INVALID_QUERY, None
 
 
@@ -629,7 +632,7 @@ class RecordMachineAudioController:
             results = [{"channel": i, "data": {"ret_code": -1, "ret_msg": "model not found", "result": []}} for i in range(num_channels)]
             self._emit_analysis_completed(results)
             return
-        model_path, config_path = query_result
+        model_path, config_path, gmm_path, scaler_path = query_result
         self._start_analysis_process()
         job_id = f"{int(time.time()*1000)}_{uuid.uuid4().hex}"
         npy_path = os.path.join(self._temp_dir, f"segments_{job_id}.npy")
@@ -642,6 +645,8 @@ class RecordMachineAudioController:
                     "sampling_rate": sampling_rate,
                     "model_path": model_path,
                     "config_path": config_path,
+                    "gmm_path": gmm_path,
+                    "scaler_path": scaler_path,
                 })
         except Exception as e:
             results = [{"channel": -1, "data": {"ret_code": -1, "ret_msg": f"enqueue error: {e}", "result": []}}]

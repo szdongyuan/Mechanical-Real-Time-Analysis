@@ -58,7 +58,7 @@ MODULES_LOAD = [
     ("加载模型常量", "consts.model_consts"),
     ("加载路径常量", "consts.running_consts"),
     ("加载日志模块", "base.log_manager"),
-    ("加载数据库模块", "base.db_manager"),
+    ("加载数据库模块", "base.database.db_manager"),
     ("加载AI模型管理模块", "ui.ai.register_ai_model"),
     ("加载校准模块", "ui.calibration_window"),
     ("加载错误管理模块", "ui.error_manage_widget"),

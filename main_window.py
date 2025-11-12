@@ -8,6 +8,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenuBar, QStatusBar, QLabel, QAction
 
 from base.data_struct.data_deal_struct import DataDealStruct
+from base.log_manager import LogManager
 from consts.model_consts import DEFAULT_DIR
 from ui.ai.ai_analysis_config_mvc import AIConfigView, AIConfigController, AIModelStore
 from ui.center_widget import CenterWidget
@@ -118,8 +119,6 @@ def evaluate_results_with_randoms(results):
         else:
             desired = "NG"
             if r > 0.15:
-                evaluations[ch] = "一般"
-            elif r > 0.07:
                 evaluations[ch] = "警告"
             else:
                 evaluations[ch] = "错误"
@@ -162,6 +161,7 @@ class MainWindow(QMainWindow):
         self.data_struct = DataDealStruct()
         self.model_analysis_config: dict = dict()
         self.setWindowIcon(QIcon(DEFAULT_DIR + "ui/ui_pic/sys_ico/icon.ico"))
+        self.logger = LogManager.set_log_handler("core")
 
         self.init_ui()
         self.load_model_analysis_config()
@@ -239,14 +239,22 @@ class MainWindow(QMainWindow):
         try:
             with open(analysis_json_path, "r", encoding="utf-8") as f:
                 self.model_analysis_config = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.error(e)
         self.center_widget.rm_controller.build_audio_segment_extractor(
             extract_flag=bool(self.model_analysis_config.get("use_ai", False)),
             extract_interval=float(self.model_analysis_config.get("analysis_interval", 3.5)),
             segment_duration=float(self.model_analysis_config.get("time", 4.0)),
         )
         self.center_widget.rm_controller.update_model_name(self.model_analysis_config.get("model_name", ""))
+
+    @staticmethod
+    def _evaluate_results(results):
+        result = results[0]["result"][0][1]
+        if result == "OK":
+            return "良好"
+        else:
+            return "错误"
 
     def on_analysis_completed(self, results):
         """接收每轮多通道分析结果，可在此更新UI或记录日志。"""
@@ -258,13 +266,8 @@ class MainWindow(QMainWindow):
                     return
             except Exception:
                 pass
-            # 驱动引擎
-            # 在解析items前，基于随机数调整每通道OK/NG并生成评价列表
-            try:
-                self._last_channel_evaluations = evaluate_results_with_randoms(results)
-                # print(self._last_channel_evaluations)
-            except Exception:
-                self._last_channel_evaluations = []
+
+            analysis_level = self._evaluate_results(results)
             items = parse_raw_input(results)
             self._indicator_engine.process_predictions(items)
             self._update_lights_ui_from_engine()
@@ -278,29 +281,27 @@ class MainWindow(QMainWindow):
                 sr = int(info.get("sampling_rate") or getattr(self.center_widget.rm_model, "sampling_rate", 44100))
                 dur = float(info.get("segment_duration") or 4.0)
                 if segs is not None:
-                    try:
-                        num_ch = int(segs.shape[0])
-                    except Exception:
-                        num_ch = 0
                     for it in items:
                         try:
-                            ch = int(getattr(it, "channel", -1))
                             res = str(getattr(it, "result", "")).upper()
                         except Exception:
                             continue
-                        if res == "NG" and 0 <= ch < num_ch:
+
+                        if res == "NG":
                             try:
+
                                 save_and_log_warning_segment(
-                                    segment=segs[ch],
+                                    segment=segs,
                                     sampling_rate=sr,
-                                    channel_index=ch,
                                     segment_duration_sec=dur,
-                                    warning_level=self._last_channel_evaluations[ch],
+                                    warning_level=analysis_level,
                                 )
-                            except Exception:
-                                pass
-        except Exception:
-            pass
+                            except Exception as e:
+                                print(e)
+                                self.logger.error(e)
+        except Exception as e:
+            print(e)
+            self.logger.error(e)
 
     def _on_light_tick(self):
         try:
@@ -335,8 +336,8 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
             return
-        any_red = any(v.get("color") == "RED" for v in snapshot.values())
-        any_green = any(v.get("color") == "GREEN" for v in snapshot.values())
+        any_red = snapshot.get("color") == "RED"
+        any_green = snapshot.get("color") == "GREEN"
 
         try:
             v = self.center_widget.rm_view
