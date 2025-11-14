@@ -38,6 +38,7 @@ class AudioSegmentExtractor:
         self._extracted_segments: Optional[np.ndarray] = None
         self._lock = threading.Lock()
         self._on_extracted_callback = None  # 可选回调：在每次提取完成后触发
+        self._stop_event = threading.Event()
         
     def set_audio_source(self, audio_data_arr: List[np.ndarray], write_index_ref=None):
         """
@@ -64,6 +65,8 @@ class AudioSegmentExtractor:
         if self._audio_data_arr is None:
             raise ValueError("请先通过set_audio_source()设置音频数据源")
         
+        self._stop_event.clear()
+        
         self._is_running = True
         self._extract_thread = threading.Thread(target=self._extraction_loop, daemon=True)
         self._extract_thread.start()
@@ -75,15 +78,23 @@ class AudioSegmentExtractor:
             return
         
         self._is_running = False
+        self._stop_event.set()
         if self._extract_thread is not None:
-            self._extract_thread.join(timeout=5)
+            self._extract_thread.join(timeout=2)
+            self._extract_thread = None
         # print("AudioSegmentExtractor 已停止")
     
     def _extraction_loop(self):
         """提取循环（在独立线程中运行）"""
-        while self._is_running:
+        while self._is_running and not self._stop_event.is_set():
             try:
+                if self._stop_event.is_set():
+                    break
+
                 self._extract_segments()
+                if self._stop_event.is_set():
+                    break
+
                 # 在提取完成后触发回调（如已设置）
                 if self._on_extracted_callback is not None:
                     segments = self.get_extracted_segments()
@@ -91,12 +102,15 @@ class AudioSegmentExtractor:
                         try:
                             self._on_extracted_callback(segments, self.sampling_rate)
                         except Exception as e:
-                            pass
-                            # print(f"提取回调执行错误: {e}")
-                time.sleep(self.extract_interval)
+                            # pass
+                            print(f"提取回调执行错误: {e}")
+                if self._stop_event.wait(self.extract_interval):
+                    break
             except Exception as e:
                 pass
-                # print(f"音频片段提取出错: {e}")
+                print(f"音频片段提取出错: {e}")
+                if self._stop_event.wait(0.1):
+                    break
     
     def _extract_segments(self):
         """
@@ -128,7 +142,7 @@ class AudioSegmentExtractor:
                 self._extracted_segments[channel_idx] = segment
             
             # 打印日志（可选）
-            current_time = time.strftime("%H:%M:%S", time.localtime())
+            # current_time = time.strftime("%H:%M:%S", time.localtime())
             # print(f"[{current_time}] 已提取音频片段：{len(self._audio_data_arr)}个通道，每个{self.segment_duration}秒")
     
     def get_extracted_segments(self) -> Optional[np.ndarray]:

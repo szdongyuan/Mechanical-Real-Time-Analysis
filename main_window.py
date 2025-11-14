@@ -3,17 +3,18 @@ import random
 import os
 import json
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenuBar, QStatusBar, QLabel, QAction
 
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.log_manager import LogManager
+from base.save_audio import save_and_log_warning_segment
 from consts.model_consts import DEFAULT_DIR
 from ui.ai.ai_analysis_config_mvc import AIConfigView, AIConfigController, AIModelStore
 from ui.center_widget import CenterWidget
-from base.indicator_engine import IndicatorEngine, parse_raw_input
-from base.save_audio import save_and_log_warning_segment
+from ui.infor_limition import open_infor_limition_dialog
+from ui.tcp_config import open_tcp_config_dialog
 
 
 def generate_channel_randoms(num_channels):
@@ -155,7 +156,6 @@ def evaluate_results_with_randoms(results):
 
 
 class MainWindow(QMainWindow):
-
     def __init__(self):
         super().__init__()
         self.data_struct = DataDealStruct()
@@ -178,19 +178,18 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # 指示灯引擎与定时器
-        self._indicator_engine = IndicatorEngine(red_add_seconds=1.0)
-        self._light_timer = QTimer(self)
-        self._light_timer.setInterval(200)  # 100ms 刷新
-        self._light_timer.timeout.connect(self._on_light_tick)
-        self._light_timer.start()
-
     def set_menu_bar(self):
         menu_bar = QMenuBar()
         function_menu = menu_bar.addMenu("功能")
         ai_analysis_action = QAction("AI 分析", self)
         ai_analysis_action.triggered.connect(self.show_ai_analysis_window)
         function_menu.addAction(ai_analysis_action)
+        infor_limit_action = QAction("通知限制", self)
+        infor_limit_action.triggered.connect(self.show_infor_limit_window)
+        function_menu.addAction(infor_limit_action)
+        tcp_config_action = QAction("TCP 配置", self)
+        tcp_config_action.triggered.connect(self.show_tcp_config_window)
+        function_menu.addAction(tcp_config_action)
         hardware_menu = menu_bar.addMenu("硬件")
         user_menu = menu_bar.addMenu("用户")
         help_menu = menu_bar.addMenu("帮助")
@@ -233,20 +232,35 @@ class MainWindow(QMainWindow):
             segment_duration=float(self.model_analysis_config.get("time", 4.0)),
         )
         self.center_widget.rm_controller.update_model_name(self.model_analysis_config.get("model_name", ""))
+        if self.model_analysis_config.get("use_ai", False):
+            self.center_widget.rm_controller.start_analysis_process()
+        else:
+            self.center_widget.rm_controller.stop_analysis_process()
+    
+    def show_infor_limit_window(self):
+        code, values = open_infor_limition_dialog(None, initial=self.center_widget.rm_model.infor_limit_config)
+        if code == 1:
+            self.center_widget.rm_model.infor_limit_config = values
+
+    def show_tcp_config_window(self):
+        code, values = open_tcp_config_dialog(None, initial=self.center_widget.rm_model.tcp_config)
+        if code == 1:
+            self.center_widget.rm_model.tcp_config = values
 
     def load_model_analysis_config(self):
         analysis_json_path = os.path.normpath(DEFAULT_DIR + "ui/ui_config/model_analysis.json")
-        try:
+        if os.path.exists(analysis_json_path):
             with open(analysis_json_path, "r", encoding="utf-8") as f:
                 self.model_analysis_config = json.load(f)
-        except Exception as e:
-            self.logger.error(e)
         self.center_widget.rm_controller.build_audio_segment_extractor(
             extract_flag=bool(self.model_analysis_config.get("use_ai", False)),
             extract_interval=float(self.model_analysis_config.get("analysis_interval", 3.5)),
             segment_duration=float(self.model_analysis_config.get("time", 4.0)),
         )
         self.center_widget.rm_controller.update_model_name(self.model_analysis_config.get("model_name", ""))
+
+        if self.model_analysis_config.get("use_ai", False):
+            self.center_widget.rm_controller.start_analysis_process()
 
     @staticmethod
     def _evaluate_results(results):
@@ -257,39 +271,35 @@ class MainWindow(QMainWindow):
             return "错误"
 
     def on_analysis_completed(self, results):
-        """接收每轮多通道分析结果，可在此更新UI或记录日志。"""
         try:
-            # 未录音则不处理、且保持指示灯关闭
+            # 未录音则不处理
             try:
                 if not self.center_widget.rm_model.data_struct.record_flag:
-                    self._update_lights_off()
                     return
             except Exception:
                 pass
 
             analysis_level = self._evaluate_results(results)
-            items = parse_raw_input(results)
-            self._indicator_engine.process_predictions(items)
-            self._update_lights_ui_from_engine()
 
-            # 若启用AI分析：对NG通道保存本次被分析的片段并写入数据库
             se = getattr(self.center_widget.rm_model, "segment_extractor", None)
             if se is not None and getattr(se, "is_running", False):
-
                 segs = se.get_extracted_segments()
                 info = se.get_segment_info()
                 sr = int(info.get("sampling_rate") or getattr(self.center_widget.rm_model, "sampling_rate", 44100))
                 dur = float(info.get("segment_duration") or 4.0)
                 if segs is not None:
-                    for it in items:
+                    for entry in results:
                         try:
-                            res = str(getattr(it, "result", "")).upper()
+                            res_list = entry.get("result") or []
+                            if not res_list:
+                                continue
+                            first = res_list[0]
+                            result_str = str(first[1]).upper() if len(first) > 1 else "OK"
                         except Exception:
                             continue
 
-                        if res == "NG":
+                        if result_str == "NG":
                             try:
-
                                 save_and_log_warning_segment(
                                     segment=segs,
                                     sampling_rate=sr,
@@ -297,69 +307,10 @@ class MainWindow(QMainWindow):
                                     warning_level=analysis_level,
                                 )
                             except Exception as e:
-                                print(e)
                                 self.logger.error(e)
         except Exception as e:
-            print(e)
             self.logger.error(e)
 
-    def _on_light_tick(self):
-        try:
-            # 未录音则不点亮指示灯
-            try:
-                if not self.center_widget.main_widget.data_struct.record_flag:
-                    self._update_lights_off()
-                    return
-            except Exception:
-                pass
-            self._indicator_engine.tick(self._light_timer.interval() / 1000.0)
-            self._update_lights_ui_from_engine()
-        except Exception:
-            pass
-
-    def _update_lights_ui_from_engine(self):
-        """聚合显示：若任一通道红灯亮 -> 总红灯亮；否则若存在 GREEN -> 总绿灯亮；否则全灰。"""
-        # 未录音则关闭灯
-        try:
-            if not self.center_widget.rm_model.data_struct.record_flag:
-                self._update_lights_off()
-                return
-        except Exception:
-            pass
-        snapshot = self._indicator_engine.render_snapshot()
-        # 若尚无任何数据/通道，默认点亮绿灯
-        if not snapshot:
-            try:
-                v = self.center_widget.rm_view
-                v.set_light_color(v.red_light, "gray")
-                v.set_light_color(v.green_light, "green")
-            except Exception:
-                pass
-            return
-        any_red = snapshot.get("color") == "RED"
-        any_green = snapshot.get("color") == "GREEN"
-
-        try:
-            v = self.center_widget.rm_view
-            if any_red:
-                v.set_light_color(v.red_light, "red")
-                v.set_light_color(v.green_light, "gray")
-            elif any_green:
-                v.set_light_color(v.red_light, "gray")
-                v.set_light_color(v.green_light, "green")
-            else:
-                v.set_light_color(v.red_light, "gray")
-                v.set_light_color(v.green_light, "gray")
-        except Exception:
-            pass
-
-    def _update_lights_off(self):
-        try:
-            v = self.center_widget.rm_view
-            v.set_light_color(v.red_light, "gray")
-            v.set_light_color(v.green_light, "gray")
-        except Exception:
-            pass
 
     def show_statusbar_layout(self):
         # create status bar, show the user data and device data, and close drag status bar modify window size

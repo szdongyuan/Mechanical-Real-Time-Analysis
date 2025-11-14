@@ -246,6 +246,9 @@ class CnnSeBlock(layers.Layer):
         cfg.update({"filters": self.filters, "reduction": self.reduction})
         return cfg
 
+    def build(self, input_shape):
+        super().build(input_shape)
+
 
 @tf.keras.utils.register_keras_serializable()
 class AsymmetricFusion(layers.Layer):
@@ -265,6 +268,9 @@ class AsymmetricFusion(layers.Layer):
             self.ffn_v.append(self._build_ffn_block(self.embed_dim, prefix=f"{self.name}_v_ffn_{i + 1}"))
             self.ffn_add_v.append(layers.Add(name=f"{self.name}_v_ffn_add_{i + 1}"))
         self.concat = layers.Concatenate(axis=-1, name=f"{self.name}_concat")
+    
+    def build(self, input_shape):
+        super().build(input_shape)
 
     @staticmethod
     def _build_ffn_block(dim, prefix: str):

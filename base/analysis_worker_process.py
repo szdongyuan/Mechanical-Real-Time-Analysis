@@ -1,6 +1,5 @@
 import os
 
-from time import time
 
 def analysis_worker(job_queue, result_queue):
     """
@@ -25,7 +24,7 @@ def analysis_worker(job_queue, result_queue):
         import os as _os
         import json as _json
         from base.predict_model import predict_from_audio
-        from base.model_config import init_model_from_config as _init_model_from_config
+        # from base.model_config import init_model_from_config as _init_model_from_config
     except Exception as e:
         # 若初始化即失败，尝试将错误回传并退出
         try:
@@ -59,7 +58,6 @@ def analysis_worker(job_queue, result_queue):
                 "scaler": scaler_path,
             }
             try:
-                t1 = time()
                 ret_str = predict_from_audio(
                     signals=[segments],
                     file_names=["current"],
@@ -68,7 +66,6 @@ def analysis_worker(job_queue, result_queue):
                     config_path=config_path,
                 )
                 ret = _json.loads(ret_str)
-                print(time() - t1, "time")
             except Exception as e:
                 print(e)
                 ret = {"ret_code": -1, "ret_msg": f"predict error: {e}", "result": [[ "ERR", "0.0"]]}
