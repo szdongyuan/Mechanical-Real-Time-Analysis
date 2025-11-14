@@ -13,6 +13,9 @@ class Countdown(QThread):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_time)
 
+    def set_count(self, count):
+        self.count = count
+
     def update_time(self):
         if self.countdown_time < self.count - 1:
             self.countdown_time += 1
@@ -21,11 +24,11 @@ class Countdown(QThread):
             self.signal_for_update.emit(self.count)
 
     def count_stop(self):
-        print("count_stop")
+        # print("count_stop")
         self.timer.stop()
         self.signal_for_update.emit(self.countdown_time)
 
     def count_start(self):
-        print("count_start")
+        # print("count_start")
         self.countdown_time = 0
         self.timer.start(1000)

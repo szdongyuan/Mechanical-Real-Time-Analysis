@@ -1,11 +1,10 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 @dataclass(frozen=True)
 class PredictionItem:
     result: str  # "OK" / "NG"
-    score: Optional[float] = None
 
 
 class RedLightController:
@@ -93,13 +92,7 @@ def parse_raw_input(raw: List[dict]) -> List[PredictionItem]:
             continue
         first = res_list[0]
         result_str = str(first[1]).upper() if len(first) > 1 else "OK"
-        score: Optional[float] = None
-        if len(first) > 2:
-            try:
-                score = float(first[2])
-            except Exception:
-                score = None
-        items.append(PredictionItem(result=result_str, score=score))
+        items.append(PredictionItem(result=result_str))
     return items
 
 

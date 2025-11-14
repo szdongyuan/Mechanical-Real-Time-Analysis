@@ -73,16 +73,17 @@ app.exec_()
 - 依赖可用的音频输入设备；设备信息优先从配置读取，无法获取时回退到默认麦克风（首通道）。
 """
 
-import numpy as np
 import os
 import uuid
+import json
 import tempfile
-import multiprocessing as mp
-
 import time
 import threading
 
-from PyQt5.QtCore import QUrl, Qt, pyqtSignal
+import multiprocessing as mp
+import numpy as np
+
+from PyQt5.QtCore import QUrl, Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon, QDesktopServices, QFont, QPixmap
 from PyQt5.QtWidgets import QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QLineEdit
 from PyQt5.QtWidgets import QFileDialog, QFrame, QMessageBox
@@ -90,6 +91,7 @@ from scipy.signal import spectrogram
 
 from base.analysis_worker_process import analysis_worker
 from base.audio_data_manager import auto_save_data
+from base.database.fixed_time_ng_total import query_warning_between
 from base.load_device_info import load_devices_data
 from base.sound_device_manager import get_default_device
 from base.log_manager import LogManager
@@ -98,6 +100,8 @@ from base.data_struct.data_deal_struct import DataDealStruct
 from base.data_struct.audio_segment_extractor import AudioSegmentExtractor
 from base.sound_device_manager import sd
 from base.training_model_management import TrainingModelManagement
+from base.tcp.tcp_client import send_dict
+from base.indicator_engine import IndicatorEngine, PredictionItem
 from consts import error_code
 from consts.running_consts import DEFAULT_DIR
 from ui.system_information_textedit import log_controller
@@ -114,6 +118,8 @@ class RecordMachineAudioModel:
         self.sampling_rate = 44100
         self.channels = None
         self.selected_channels = list()
+        self.infor_limit_config = dict()
+        self.tcp_config = dict()
 
         self.total_display_time = 60
         self.nfft = 256
@@ -132,6 +138,7 @@ class RecordMachineAudioModel:
 
         self.audio_manager = AudioDataManager()
         self.auto_save_count = Countdown(self.total_display_time - 10)
+        self.infor_limit_count = Countdown(self.infor_limit_config.get("duration_min", 100) * 60)
 
         self.segment_extractor = None
 
@@ -200,11 +207,10 @@ class RecordMachineAudioModel:
         self.audio_store_path = path or ""
 
     def init_store_path(self):
-        try:
-            with open(DEFAULT_DIR + "ui/ui_config/audio_store_path.txt", "r") as f:
+        store_path_file = DEFAULT_DIR + "ui/ui_config/audio_store_path.txt"
+        if os.path.exists(store_path_file):
+            with open(store_path_file, "r") as f:
                 self.audio_store_path = f.readline()
-        except Exception as e:
-            self.logger.error(f"init_store_path failed: {e}")
 
     @staticmethod
     def save_store_path_to_txt(path):
@@ -491,7 +497,18 @@ class RecordMachineAudioController:
         self._plot_thread = None
         self._plot_counter = 0
 
+        # 指示灯引擎与定时器
+        self._indicator_engine = IndicatorEngine(red_add_seconds=3.0)
+        self._light_timer = QTimer()
+        self._light_timer.setInterval(200)  # 200ms 刷新
+        self._light_timer.timeout.connect(self._on_light_tick)
+
+        self.init_infor_limit_config()
+        self.init_tcp_config()
+        self.model.infor_limit_count.set_count(self.model.infor_limit_config.get("duration_min", 100) * 60)
+
         self.model.auto_save_count.signal_for_update.connect(self.save_audio_data)
+        self.model.infor_limit_count.signal_for_update.connect(self.check_infor_limit)
 
     def update_model_name(self, model_name: str):
         self.model.model_name = model_name or ""
@@ -509,15 +526,20 @@ class RecordMachineAudioController:
         if hasattr(self.widget, "recording_started"):
             self.widget.recording_started.emit()
         self.model.auto_save_count.count_start()
+        self.model.infor_limit_count.count_start()
         self.model.start_record_time = time.strftime("%Y%m%d%H%M%S", time.localtime())
         self.view.chart_graph.clear()
         self.init_new_canvas()
         log_controller.info("开始录制音频")
 
+        # 启动指示灯定时器
+        if self.model.infor_limit_config.get("enable_limit", False):
+            self._light_timer.start()
+
         if self.model.segment_extractor:
             if not self.model.segment_extractor.is_running:
                 self.model.segment_extractor.start()
-        self._start_analysis_process()
+        # self.start_analysis_process()
 
         self.model.audio_manager.start_recording(self.model.ctx, self.model.selected_channels, self.model.sampling_rate, self.model.channels)
         if self._plot_thread is None or not self._plot_thread.is_alive():
@@ -526,17 +548,22 @@ class RecordMachineAudioController:
 
     def stop_record(self):
         self.model.data_struct.record_flag = False
+        # 停止指示灯定时器
+        if self.model.infor_limit_config.get("enable_limit", False):
+            self._light_timer.stop()
+        
         self.view.set_light_color(self.view.green_light, "gray")
         self.view.set_light_color(self.view.red_light, "gray")
         self.view.record_btn.setEnabled(True)
         self.view.stop_btn.setEnabled(False)
         self.view.audio_store_path_lineedit.setEnabled(True)
         self.model.auto_save_count.count_stop()
+        self.model.infor_limit_count.count_stop()
         self.model.set_up_audio_store_zero()
         self.model.start_record_time = None
         if self.model.segment_extractor and self.model.segment_extractor.is_running:
             self.model.segment_extractor.stop()
-        self._stop_analysis_process()
+        # self.stop_analysis_process()
         self.model.audio_manager.stop_recording()
         log_controller.info("停止录制音频")
         if hasattr(self.widget, "recording_stopped"):
@@ -600,12 +627,46 @@ class RecordMachineAudioController:
     def on_close(self, event):
         if self.model.segment_extractor and self.model.segment_extractor.is_running:
             self.model.segment_extractor.stop()
-        self._stop_analysis_process()
+        self.stop_analysis_process()
         self.model.audio_manager.stop_recording()
         self.model.audio_manager.quit()
         self.model.audio_manager.wait()
         self.model.data_struct.record_flag = False
         event.accept()
+
+    def check_infor_limit(self, countdown_time):
+        now_ts = int(time.time())
+        now_cn = time.strftime("%Y年%m月%d日 %H时%M分%S秒", time.localtime(now_ts))
+        duration_min = int(self.model.infor_limit_config.get("duration_min", 100))
+        past_ts = now_ts - max(0, duration_min) * 60
+        past_cn = time.strftime("%Y年%m月%d日 %H时%M分%S秒", time.localtime(past_ts))
+        code, query_result = query_warning_between(past_cn, now_cn)
+        if code != error_code.OK or not query_result:
+            return
+        warning_count = len(query_result)
+        if warning_count >= int(self.model.infor_limit_config.get("max_count", 100)):
+            self._indicator_engine.process_predictions([PredictionItem(result="NG")])
+            self.by_tcp_send_warning("NG")
+            return
+
+    def by_tcp_send_warning(self, warning_type: str):
+        data = {
+            "warning_type": warning_type,
+            "warning_time": time.time(),
+            "warning_message": "设备异常，请检查设备状态",
+        }
+        if self.model.tcp_config.get("enable_tcp", False):
+            server_host = str(self.model.tcp_config.get("ip", "127.0.0.1"))
+            server_port = int(self.model.tcp_config.get("port", 50000))
+            print(f"发送警告到 {server_host}:{server_port}")
+            try:
+                send_dict(
+                    server_host=server_host,
+                    server_port=server_port,
+                    data_obj=data,
+                )
+            except Exception as e:
+                QMessageBox.critical(self.widget, "错误", f"发送警告失败: {e}")
 
     def save_audio_data(self, countdown_time):
         if countdown_time > self.model.total_display_time:
@@ -633,7 +694,7 @@ class RecordMachineAudioController:
             self._emit_analysis_completed(results)
             return
         model_path, config_path, gmm_path, scaler_path = query_result
-        self._start_analysis_process()
+        self.start_analysis_process()
         job_id = f"{int(time.time()*1000)}_{uuid.uuid4().hex}"
         npy_path = os.path.join(self._temp_dir, f"segments_{job_id}.npy")
         try:
@@ -652,7 +713,7 @@ class RecordMachineAudioController:
             results = [{"channel": -1, "data": {"ret_code": -1, "ret_msg": f"enqueue error: {e}", "result": []}}]
             self._emit_analysis_completed(results)
 
-    def _start_analysis_process(self):
+    def start_analysis_process(self):
         if self._analysis_starting:
             return
         if self._analysis_proc is not None and self._analysis_proc.is_alive():
@@ -693,7 +754,37 @@ class RecordMachineAudioController:
         self._analysis_listener_thread = threading.Thread(target=_listen, daemon=True)
         self._analysis_listener_thread.start()
 
-    def _stop_analysis_process(self):
+    def _on_light_tick(self):
+        """指示灯定时器回调，更新灯状态"""
+        try:
+            # 未录音则不点亮指示灯
+            if not self.model.data_struct.record_flag:
+                self.view.set_light_color(self.view.green_light, "gray")
+                self.view.set_light_color(self.view.red_light, "gray")
+                return
+            
+            # 时间推进
+            self._indicator_engine.tick(self._light_timer.interval() / 1000.0)
+            
+            # 获取当前状态并更新UI
+            snapshot = self._indicator_engine.render_snapshot()
+            if not snapshot:
+                # 若尚无任何数据，默认点亮绿灯
+                self.view.set_light_color(self.view.red_light, "gray")
+                self.view.set_light_color(self.view.green_light, "green")
+                return
+            
+            color = snapshot.get("color", "GREEN")
+            if color == "RED":
+                self.view.set_light_color(self.view.red_light, "red")
+                self.view.set_light_color(self.view.green_light, "gray")
+            else:  # GREEN
+                self.view.set_light_color(self.view.red_light, "gray")
+                self.view.set_light_color(self.view.green_light, "green")
+        except Exception:
+            pass
+
+    def stop_analysis_process(self):
         self._analysis_running = False
         try:
             if self._analysis_job_q is not None:
@@ -725,3 +816,17 @@ class RecordMachineAudioController:
             self._analysis_res_q = None
             self._analysis_listener_thread = None
             self._analysis_starting = False
+
+    def init_infor_limit_config(self):
+        infor_limit_path = DEFAULT_DIR + "ui/ui_config/infor_limition.json"
+        if os.path.exists(infor_limit_path):
+            with open(infor_limit_path, "r", encoding="utf-8") as f:
+                infor_limit_config = json.load(f)
+                self.model.infor_limit_config = infor_limit_config
+
+    def init_tcp_config(self):
+        tcp_config_path = DEFAULT_DIR + "ui/ui_config/tcp_config.json"
+        if os.path.exists(tcp_config_path):
+            with open(tcp_config_path, "r", encoding="utf-8") as f:
+                tcp_config = json.load(f)
+                self.model.tcp_config = tcp_config
