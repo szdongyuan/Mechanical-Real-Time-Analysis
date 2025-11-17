@@ -85,7 +85,7 @@ import numpy as np
 
 from PyQt5.QtCore import QUrl, Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon, QDesktopServices, QFont, QPixmap
-from PyQt5.QtWidgets import QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QLineEdit
+from PyQt5.QtWidgets import QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QLineEdit, QSizePolicy
 from PyQt5.QtWidgets import QFileDialog, QFrame, QMessageBox
 from scipy.signal import spectrogram
 
@@ -98,7 +98,7 @@ from base.log_manager import LogManager
 from base.record_audio import AudioDataManager
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.data_struct.audio_segment_extractor import AudioSegmentExtractor
-from base.sound_device_manager import sd
+from base.sound_device_manager import sd, change_default_mic
 from base.training_model_management import TrainingModelManagement
 from base.tcp.tcp_client import send_dict
 from base.indicator_engine import IndicatorEngine, PredictionItem
@@ -120,8 +120,9 @@ class RecordMachineAudioModel:
         self.selected_channels = list()
         self.infor_limit_config = dict()
         self.tcp_config = dict()
+        self.read_channel = 0
 
-        self.total_display_time = 60
+        self.total_display_time = 600
         self.nfft = 256
         self.fs = 44100
         self.ctx = sd._CallbackContext()
@@ -148,7 +149,8 @@ class RecordMachineAudioModel:
         self.storage_filled_len = []
 
     def load_device_info(self):
-        device_name, channels, selected_channels, _, _ = load_devices_data()
+        device_name, channels, selected_channels, _, mic_index = load_devices_data()
+        change_default_mic(mic_index)
         if device_name and channels and selected_channels:
             self.select_device_name, self.channels, self.selected_channels= (
                 device_name,
@@ -355,6 +357,7 @@ class RecordMachineAudioView(QWidget):
         self.red_light_color = "gray"
         self.green_light_color = "gray"
         self.chart_graph = MultipleChartsGraph()
+        self.chart_graph.create_chart()
 
     def build(self, on_record, on_stop, on_select_path, on_about, on_audio_path_changed):
         self._init_record_bar(on_record, on_stop, on_select_path, on_audio_path_changed)
@@ -432,10 +435,13 @@ class RecordMachineAudioView(QWidget):
         solid_light_layout.addStretch(1)
         solid_light_layout.addLayout(light_layout)
         solid_light_layout.addStretch(1)
-        solid_light_layout.setContentsMargins(0, 30, 10, 0)
+        light_widget = QWidget()
+        light_widget.setLayout(solid_light_layout)
+        light_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        light_widget.setFixedWidth(solid_graph.width())
 
         solid_graph_layout = QHBoxLayout()
-        solid_graph_layout.addLayout(solid_light_layout)
+        solid_graph_layout.addWidget(light_widget)
         solid_graph_layout.addWidget(vertical_line)
         solid_graph_layout.addWidget(self.chart_graph)
         return solid_graph_layout
@@ -494,6 +500,9 @@ class RecordMachineAudioController:
         except Exception:
             pass
 
+        self.view.chart_graph.set_wavefrom_title(self.model.read_channel)
+        self.view.chart_graph.set_current_channel_combobox(self.model.selected_channels)
+
         self._plot_thread = None
         self._plot_counter = 0
 
@@ -509,6 +518,11 @@ class RecordMachineAudioController:
 
         self.model.auto_save_count.signal_for_update.connect(self.save_audio_data)
         self.model.infor_limit_count.signal_for_update.connect(self.check_infor_limit)
+        self.view.chart_graph.current_channel_combobox.currentIndexChanged.connect(self.on_current_channel_changed)
+
+    def on_current_channel_changed(self, index):
+        self.model.read_channel = index
+        self.view.chart_graph.set_wavefrom_title(self.model.selected_channels[self.model.read_channel])
 
     def update_model_name(self, model_name: str):
         self.model.model_name = model_name or ""
@@ -574,9 +588,9 @@ class RecordMachineAudioController:
         self.view.chart_graph.clear()
         for i in range(len(self.model.selected_channels)):
             plot_audio_section = self.model.data_struct.audio_data[i, -self.model.plot_points_section:]
-            self.view.chart_graph.draw_waveform(plot_audio_section, x, i)
+            self.view.chart_graph.draw_waveform(plot_audio_section, x)
             freqs, times_arr, sxx = spectrogram(plot_audio_section, nfft=self.model.nfft, fs=self.model.fs)
-            self.view.chart_graph.draw_stftfrom(freqs, times_arr, sxx, i)
+            self.view.chart_graph.draw_stftfrom(freqs, times_arr, sxx)
 
     def update_plot(self, selected_channels, audio_data, canvas):
         while True:
@@ -584,27 +598,27 @@ class RecordMachineAudioController:
                 break
             self._plot_counter += 1
             self.model.flush_audio_queue_to_array()
-            for i in range(len(selected_channels)):
-                buf = audio_data[i]
-                pps = self.model.plot_points_section
-                if np.all(buf != 0):
-                    y = buf[-pps:]
+            # for i in range(len(selected_channels)):
+            buf = audio_data[self.model.read_channel]
+            pps = self.model.plot_points_section
+            if np.all(buf != 0):
+                y = buf[-pps:]
+            else:
+                nz = np.flatnonzero(buf)
+                if nz.size == 0:
+                    y = np.zeros(pps, dtype=buf.dtype)
                 else:
-                    nz = np.flatnonzero(buf)
-                    if nz.size == 0:
-                        y = np.zeros(pps, dtype=buf.dtype)
+                    last_idx = int(nz[-1]) + 1
+                    if last_idx >= pps:
+                        y = buf[last_idx - pps:last_idx]
                     else:
-                        last_idx = int(nz[-1]) + 1
-                        if last_idx >= pps:
-                            y = buf[last_idx - pps:last_idx]
-                        else:
-                            y = np.zeros(pps, dtype=buf.dtype)
-                            y[-last_idx:] = buf[:last_idx]
-                canvas.update_waveform(y, i)
-                freqs, times_arr, sxx = spectrogram(y, nfft=self.model.nfft, fs=self.model.fs)
-                sxx_log = np.log(sxx / 1e-11)
-                np_sxx_log = sxx_log / np.max(sxx_log)
-                canvas.update_stftfrom(freqs, times_arr, np_sxx_log, i)
+                        y = np.zeros(pps, dtype=buf.dtype)
+                        y[-last_idx:] = buf[:last_idx]
+            canvas.update_waveform(y)
+            freqs, times_arr, sxx = spectrogram(y, nfft=self.model.nfft, fs=self.model.fs)
+            sxx_log = np.log(sxx / 1e-11)
+            np_sxx_log = sxx_log / np.max(sxx_log)
+            canvas.update_stftfrom(freqs, times_arr, np_sxx_log)
             time.sleep(1)
 
     def on_audio_path_changed(self, text):
@@ -621,8 +635,11 @@ class RecordMachineAudioController:
         self.model.load_device_info()
         if self.model.data_struct.channels_change_flag:
             self.model.set_up_audio_store_zero()
-            self.view.chart_graph.create_chart(len(self.model.selected_channels))
+            # self.view.chart_graph.create_chart(len(self.model.selected_channels))
             self.model.data_struct.channels_change_flag = False
+            self.model.read_channel = 0
+            self.view.chart_graph.set_wavefrom_title(self.model.selected_channels[0])
+            self.view.chart_graph.set_current_channel_combobox(self.model.selected_channels)
 
     def on_close(self, event):
         if self.model.segment_extractor and self.model.segment_extractor.is_running:
@@ -690,13 +707,13 @@ class RecordMachineAudioController:
             return
         code, query_result = RecordMachineAudioModel.get_model_info(self.model.model_name)
         if code != error_code.OK or not query_result:
-            results = [{"channel": i, "data": {"ret_code": -1, "ret_msg": "model not found", "result": []}} for i in range(num_channels)]
+            results = [{"ret_code": -1, "ret_msg": "model not found", "result": []}]
             self._emit_analysis_completed(results)
             return
         model_path, config_path, gmm_path, scaler_path = query_result
         self.start_analysis_process()
-        job_id = f"{int(time.time()*1000)}_{uuid.uuid4().hex}"
-        npy_path = os.path.join(self._temp_dir, f"segments_{job_id}.npy")
+        job_id = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        npy_path = os.path.join(self._temp_dir, f"{job_id}.npy")
         try:
             np.save(npy_path, segments)
             if self._analysis_job_q is not None:
@@ -710,7 +727,7 @@ class RecordMachineAudioController:
                     "scaler_path": scaler_path,
                 })
         except Exception as e:
-            results = [{"channel": -1, "data": {"ret_code": -1, "ret_msg": f"enqueue error: {e}", "result": []}}]
+            results = [{"ret_code": -1, "ret_msg": f"enqueue error: {e}", "result": []}]
             self._emit_analysis_completed(results)
 
     def start_analysis_process(self):

@@ -2,13 +2,14 @@ import sys
 import json
 from datetime import datetime
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QItemSelectionModel
 from PyQt5.QtGui import QStandardItem, QStandardItemModel
 from PyQt5.QtWidgets import QApplication, QAbstractItemView, QDialog, QHBoxLayout, QLabel, QListView, QFrame
 from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QComboBox, QMessageBox
 
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.sound_device_manager import get_device_info, change_default_mic
+from base.load_device_info import load_devices_data
 from consts.running_consts import DEFAULT_DIR
 from ui.calibration_window import CalibrationWindow
 from ui.system_information_textedit import log_controller
@@ -56,6 +57,9 @@ class DeviceListWindow(QDialog):
         layout.addLayout(btn_layout)
 
         self.setLayout(layout)
+
+        # 应用已保存配置到控件（若存在）
+        self._apply_saved_config()
 
     def create_api_layout(self):
         api_layout = QHBoxLayout()
@@ -116,6 +120,59 @@ class DeviceListWindow(QDialog):
 
         return btn_layout
 
+    def _apply_saved_config(self):
+        """
+        从 ui/ui_config/device_data.json 读取配置，初始化 API、设备与通道选中状态。
+        内部通道索引按 0 基存储，UI 显示为 1 基。
+        """
+        try:
+            device_name, channels, selected_channels, current_api, mic_index = load_devices_data()
+        except Exception:
+            return
+        if not device_name or not current_api:
+            return
+
+        # 1) 选择 API（将触发设备列表刷新）
+        api_idx = self.api_combo_box.findText(current_api)
+        if api_idx != -1:
+            # 触发 update_api_device，刷新 self.device_list 与 list_view.model()
+            self.api_combo_box.setCurrentIndex(api_idx)
+        else:
+            # 未找到对应 API，放弃恢复
+            return
+
+        # 2) 在设备列表中选中设备，并触发通道列表构建
+        item_model: QStandardItemModel = self.list_view.model()
+        if item_model is None:
+            return
+        target_index = None
+        for row in range(item_model.rowCount()):
+            item = item_model.item(row, 0)
+            if item and item.text() == device_name:
+                target_index = item_model.indexFromItem(item)
+                break
+        if target_index is None:
+            return
+        self.list_view.setCurrentIndex(target_index)
+        # 同步内部 selected_device 与通道列表
+        self.on_select_item(target_index)
+
+        # 3) 选中通道（selected_channels 为 0 基索引）
+        ch_model: QStandardItemModel = self.channel_list.model()
+        if ch_model is None:
+            return
+        sel_model = self.channel_list.selectionModel()
+        if sel_model is None:
+            return
+        sel_model.clearSelection()
+        for ch in selected_channels or []:
+            row = int(ch)
+            if 0 <= row < ch_model.rowCount():
+                idx = ch_model.index(row, 0)
+                sel_model.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+        # 同步内部 selected_channels
+        self.set_selected_channels()
+
     def update_api_device(self):
         item_model = QStandardItemModel()
         current_api = self.api_combo_box.currentText()
@@ -141,7 +198,7 @@ class DeviceListWindow(QDialog):
         about_device_checiked_info.setWindowTitle("关于设备校准")
         info_str = "您选择的设备共有%s个通道，本次校准将对通道%s进行校准。\n请确认是否继续？" % (
             self.selected_device["max_input_channels"],
-            self.selected_channels,
+            [channel + 1 for channel in self.selected_channels],
         )
         about_device_checiked_info.setText(info_str)
         about_device_checiked_info.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
@@ -154,10 +211,10 @@ class DeviceListWindow(QDialog):
     def mic_channel_check(self):
         check_mic_result = {}
         for channel in self.selected_channels:
-            QMessageBox.information(self, "提示", "开始校准通道：" + channel + "，请将校准源放置到待校准通道处")
-            calibration_window = CalibrationWindow(self.selected_device["max_input_channels"], int(channel))
+            QMessageBox.information(self, "提示", "开始校准通道：" + str(channel + 1) + "，请将校准源放置到待校准通道处")
+            calibration_window = CalibrationWindow(self.selected_device["max_input_channels"], int(channel + 1))
             check_result = calibration_window.exec()
-            check_mic_result["channel-%s_deviation_value" % channel] = check_result
+            check_mic_result["channel-%s_deviation_value" % str(channel + 1)] = check_result
         check_mic_result["Datetime"] = datetime.now().strftime("%Y-%m-%d")
         self.save_mic_check_result_to_json(check_mic_result)
 
@@ -179,11 +236,12 @@ class DeviceListWindow(QDialog):
         self.channel_list.model().clear()
 
         for channel in range(max_channels):
-            self.channel_list.model().appendRow(QStandardItem(str(channel)))
+            self.channel_list.model().appendRow(QStandardItem(str(channel + 1)))
 
     def set_selected_channels(self):
         selected_indices = self.channel_list.selectedIndexes()
-        self.selected_channels = [idx.data() for idx in selected_indices]
+        # UI 显示为 1 基，内部存储为 0 基整型
+        self.selected_channels = [int(idx.data()) - 1 for idx in selected_indices]
 
     @staticmethod
     def save_device_data_to_json(device_name, device_chanels, selected_channels, current_api, mic_index):

@@ -58,6 +58,7 @@ class HistoryDataWindow(QDialog):
         self.paly_flag = False
 
         self.player = None
+        self._playing_row = None  # 当前正在播放的行索引（操作列固定为第5列）
 
         self.play_icon = QIcon(DEFAULT_DIR + "ui/ui_pic/sequence_pic/play.png")
         self.pause_icon = QIcon(DEFAULT_DIR + "ui/ui_pic/sequence_pic/pause.png")
@@ -166,12 +167,14 @@ class HistoryDataWindow(QDialog):
                 item.setText("暂停")
                 item.flag = False
                 self.paly_flag = True
+                self._playing_row = index.row()
             else:
                 self.player.stop()
                 item.setIcon(self.play_icon)
                 item.setText("播放")
                 item.flag = True
                 self.paly_flag = False
+                self._playing_row = None
             # 通知视图更新图标
             self.history_data_model.dataChanged.emit(index, index, [Qt.DecorationRole])
 
@@ -182,7 +185,7 @@ class HistoryDataWindow(QDialog):
         return None
 
     def load_wave_data(self, wave_file_path):
-        wave_data = librosa.load(wave_file_path, sr=44100, mono=False, dtype=np.int16)[0]
+        wave_data = librosa.load(wave_file_path, sr=44100, mono=False, dtype=np.float32)[0]
         if len(wave_data.shape) == 2:
             wave_data = wave_data.T
         return wave_data
@@ -193,7 +196,22 @@ class HistoryDataWindow(QDialog):
         self.player.start()
 
     def on_playback_finished(self):
-        print("播放完成")
+        # 播放结束后，将操作列的图标/文本重置为“播放”状态
+        try:
+            if self._playing_row is not None:
+                item = self.history_data_model.item(self._playing_row, 5)
+                if item is not None:
+                    item.setIcon(self.play_icon)
+                    item.setText("播放")
+                    item.flag = True
+                    # 触发视图刷新
+                    idx = self.history_data_model.index(self._playing_row, 5)
+                    self.history_data_model.dataChanged.emit(idx, idx, [Qt.DecorationRole])
+        except Exception:
+            pass
+        finally:
+            self.paly_flag = False
+            self._playing_row = None
 
     def show(self):
         # 展示前自动刷新一次数据

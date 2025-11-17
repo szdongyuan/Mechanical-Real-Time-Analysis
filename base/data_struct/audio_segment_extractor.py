@@ -5,7 +5,7 @@
 import numpy as np
 import threading
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 class AudioSegmentExtractor:
@@ -30,6 +30,7 @@ class AudioSegmentExtractor:
         self.segment_duration = segment_duration
         self.sampling_rate = sampling_rate
         self.segment_samples = int(segment_duration * sampling_rate)  # 4秒对应的采样点数
+        self.create_time_list = list()
         
         self._is_running = False
         self._extract_thread: Optional[threading.Thread] = None
@@ -140,7 +141,8 @@ class AudioSegmentExtractor:
                 
                 # 存储到二维数组对应通道
                 self._extracted_segments[channel_idx] = segment
-            
+            self.create_time_list.append(time.time())
+            # print(self.create_time_list)
             # 打印日志（可选）
             # current_time = time.strftime("%H:%M:%S", time.localtime())
             # print(f"[{current_time}] 已提取音频片段：{len(self._audio_data_arr)}个通道，每个{self.segment_duration}秒")
@@ -189,7 +191,8 @@ class AudioSegmentExtractor:
             "sampling_rate": self.sampling_rate,
             "segment_samples": self.segment_samples,
             "num_channels": num_channels,
-            "is_running": self._is_running
+            "is_running": self._is_running,
+            "create_time_list": self.create_time_list
         }
     
     @property

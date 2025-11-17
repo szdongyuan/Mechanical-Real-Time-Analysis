@@ -99,7 +99,7 @@ def insert_warning_record(
     [warning_time, warning_level, warning_status, charge_person, file_name, record_time, stop_time, deal_status, description]
     """
     warning_time = _now_str()
-    warning_time = time.strftime("%Y年%m月%d日 %H时%M分%S秒", time.strptime(warning_time, "%Y%m%d%H%M%S"))
+    warning_time = stop_time
     if description is None:
         description = f"AI分析NG，通道{channel_index}"
 
@@ -137,6 +137,7 @@ def save_and_log_warning_segment(
     channel_index: int = None,
     base_dir: Optional[str] = None,
     warning_level: str = "一般",
+    create_time: str = None,
     charge_person: str = "",
     deal_status: str = "未确认",
     description: Optional[str] = None,
@@ -145,14 +146,13 @@ def save_and_log_warning_segment(
     组合操作：保存音频片段到 .wav，并写入 warning_audio_data_table。
     返回最终保存的绝对文件路径。
     """
-    stop_time = _now_str()
-    try:
-        # 推算片段开始时间（向下取整到秒）
-        dur = max(0.0, float(segment_duration_sec))
-        start_epoch = int(time.time() - dur)
-        record_time = time.strftime("%Y年%m月%d日 %H时%M分%S秒", time.localtime(start_epoch))
-    except Exception:
-        record_time = stop_time
+    stop_epoch = create_time
+    # 推算片段开始时间（向下取整到秒）
+    dur = max(0.0, float(segment_duration_sec))
+    start_epoch = int(stop_epoch - dur)
+    record_time = time.strftime("%Y年%m月%d日 %H时%M分%S秒", time.localtime(start_epoch))
+    stop_time = time.strftime("%Y%m%d%H%M%S", time.localtime(stop_epoch))
+
 
     # 按要求文件名格式：YYYYMMDDHHMMSS-通道.wav（使用stop_time做时间戳）
     file_path = save_warning_wav(segment, sampling_rate, channel_index, base_dir=base_dir, timestamp=stop_time)
@@ -174,5 +174,4 @@ def save_and_log_warning_segment(
     )
 
     return file_path
-
-
+    
