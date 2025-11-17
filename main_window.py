@@ -2,6 +2,7 @@ import sys
 import random
 import os
 import json
+import tempfile
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
@@ -287,6 +288,7 @@ class MainWindow(QMainWindow):
                 info = se.get_segment_info()
                 sr = int(info.get("sampling_rate") or getattr(self.center_widget.rm_model, "sampling_rate", 44100))
                 dur = float(info.get("segment_duration") or 4.0)
+                create_time_list = info.get("create_time_list") or []
                 if segs is not None:
                     for entry in results:
                         try:
@@ -305,9 +307,11 @@ class MainWindow(QMainWindow):
                                     sampling_rate=sr,
                                     segment_duration_sec=dur,
                                     warning_level=analysis_level,
+                                    create_time=create_time_list[0],
                                 )
                             except Exception as e:
                                 self.logger.error(e)
+                create_time_list.pop(0)
         except Exception as e:
             self.logger.error(e)
 
@@ -334,6 +338,20 @@ class MainWindow(QMainWindow):
         self.center_widget.rm_model.audio_manager.quit()
         self.center_widget.rm_model.audio_manager.wait()
         self.data_struct.record_flag = False
+        temp_dir = os.path.join(tempfile.gettempdir(), "audio_segments_tmp")
+        try:
+            if os.path.isdir(temp_dir):
+                for name in os.listdir(temp_dir):
+                    fp = os.path.join(temp_dir, name)
+                    if os.path.isfile(fp):
+                        try:
+                            os.remove(fp)
+                        except Exception:
+                            pass
+            else:
+                os.makedirs(temp_dir, exist_ok=True)
+        except Exception as e:
+            print(f"清理临时目录失败: {e}")
         event.accept()
 
 

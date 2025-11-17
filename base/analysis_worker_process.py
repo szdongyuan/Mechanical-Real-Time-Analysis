@@ -70,7 +70,6 @@ def analysis_worker(job_queue, result_queue):
                 print(e)
                 ret = {"ret_code": -1, "ret_msg": f"predict error: {e}", "result": [[ "ERR", "0.0"]]}
             results.append(ret)
-
         except Exception as e:
             results = [{"ret_code": -1, "ret_msg": f"worker error: {e}", "result": []}]
         try:
