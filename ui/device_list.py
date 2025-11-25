@@ -1,5 +1,6 @@
 import sys
 import json
+import os
 from datetime import datetime
 
 from PyQt5.QtCore import Qt, QItemSelectionModel
@@ -12,7 +13,7 @@ from base.sound_device_manager import get_device_info, change_default_mic
 from base.load_device_info import load_devices_data
 from consts.running_consts import DEFAULT_DIR
 from ui.calibration_window import CalibrationWindow
-from ui.system_information_textedit import log_controller
+# from ui.system_information_textedit import log_controller
 
 
 class DeviceListWindow(QDialog):
@@ -246,8 +247,10 @@ class DeviceListWindow(QDialog):
     @staticmethod
     def save_device_data_to_json(device_name, device_chanels, selected_channels, current_api, mic_index):
         selected_channels.sort()
-        # dir_path = "D:/gqgit/new_project/ui/ui_config/"
-        file_path = DEFAULT_DIR + "ui/ui_config/device_data.json"
+        target_dir = DEFAULT_DIR + "ui/ui_config/"
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
+        file_path = target_dir + "device_data.json"
         device_data = {
             "device_name": device_name,
             "device_chanels": device_chanels,
@@ -264,8 +267,6 @@ class DeviceListWindow(QDialog):
     def on_click_ok_btn(self):
         self.data_struct.channels_change_flag = True
         current_api = self.api_combo_box.currentText()
-        from pprint import pprint
-        pprint(f"current_api: {current_api}")
         index = self.api_info[current_api]["input"].index(self.selected_device)
         mic_index = self.api_info[current_api]["input"][index]["index"]
         change_default_mic(mic_index)
@@ -277,7 +278,7 @@ class DeviceListWindow(QDialog):
             current_api,
             mic_index
         )
-        log_controller.info(f"选择硬件{self.selected_device['name']}")
+        # log_controller.info(f"选择硬件{self.selected_device['name']}")
 
     def on_click_cancel_btn(self):
         self.selected_device = None

@@ -4,6 +4,9 @@ import socket
 import sys
 from typing import Optional
 
+from base.log_manager import LogManager
+
+logger = LogManager.set_log_handler("core")
 
 class TcpClient:
     """
@@ -83,8 +86,8 @@ class TcpClient:
                     break
         except socket.timeout:
             pass
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to read response: {e}")
         return b"".join(chunks) if chunks else b""
 
 
@@ -169,6 +172,7 @@ def main(argv=None) -> int:
         return 0
     except Exception as e:
         print(f"[ERROR] {e}", file=sys.stderr)
+        logger.error(f"Failed to send dict: {e}")
         return 2
 
 

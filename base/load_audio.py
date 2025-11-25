@@ -3,7 +3,11 @@ import os
 import numpy as np
 import librosa
 
+from base.log_manager import LogManager
 from consts import error_code
+
+
+logger = LogManager.set_log_handler("core")
 
 
 def get_audio_files_and_labels(signal_path, sr=None, with_labels=-1, **kwargs):
@@ -52,6 +56,6 @@ def get_audio_files_and_labels(signal_path, sr=None, with_labels=-1, **kwargs):
                 labels.append(with_labels)
                 fs.append(sr)
         except Exception as e:
-            print("something wrong")
+            logger.error(f"get_audio_files_and_labels failed: {e}")
 
     return error_code.OK, (audio_signals, audio_file_names, fs, labels)

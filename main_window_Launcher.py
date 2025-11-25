@@ -34,8 +34,8 @@ class MainWindowLauncher(object):
     def on_loader_finished(self):
         try:
             self.splash.close()
-            from main_window import MainWindow
-            self.window = MainWindow()
+            from ui.main_window import open_main_window
+            self.window = open_main_window()
             self.window.show()
         except Exception as e:
             msg = f"主界面启动失败：{str(e)}"
