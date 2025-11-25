@@ -5,7 +5,10 @@ from PyQt5.QtCore import QThread
 
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.sound_device_manager import sd
+from base.log_manager import LogManager
 
+
+logger = LogManager.set_log_handler("core")
 
 class AudioDataManager(QThread):
     # signal_for_update = pyqtSignal(object)  # 使用 object 类型传递 ndarray
@@ -37,8 +40,8 @@ class AudioDataManager(QThread):
                     self.data_struct.epoch = 1
                 else:
                     self.data_struct.epoch += 1
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"audio_callback failed: {e}")
             if status:
                 print(f"Audio error: {status}")
                 print(time.strftime("%Y%m%d_%H%M%S", time.localtime()))
@@ -52,7 +55,6 @@ class AudioDataManager(QThread):
                 buffer_len = int(ring_buffer.shape[0])
                 if buffer_len <= 0:
                     continue
-
                 # 读取并规范写入位置（确保落在 [0, buffer_len)）
                 write_idx = int(self.data_struct.write_index[i]) % buffer_len
 
@@ -79,8 +81,8 @@ class AudioDataManager(QThread):
                     self.data_struct.epoch = 0
                 else:
                     self.data_struct.epoch += 1
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"audio_callback failed: {e}")
 
         try:
             self.ctx.start_stream(
@@ -94,6 +96,7 @@ class AudioDataManager(QThread):
             )
             # self.timer.start(200)
         except Exception as e:
+            logger.error(f"Failed to start audio stream: {e}")
             print(f"Failed to start audio stream: {e}")
 
     def stop_recording(self):

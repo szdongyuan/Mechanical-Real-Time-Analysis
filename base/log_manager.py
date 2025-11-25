@@ -16,6 +16,8 @@ class LogManager(object):
             os.mkdir(LOG_DIR)
 
         logger = logging.getLogger(thread_holder)
+        # 禁止日志传播到 root logger，避免重复输出到控制台
+        logger.propagate = False
         log_info = LOG_MAPPING.get(thread_holder, DEFAULT_LOG)
         has_rotating_handler = False
         for handler in logger.handlers:

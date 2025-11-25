@@ -2,7 +2,10 @@ import numpy as np
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
 
 from base.sound_device_manager import sd
+from base.log_manager import LogManager
 
+
+logger = LogManager.set_log_handler("core")
 
 class AudioPlayer(QObject):
     playback_finished = pyqtSignal()
@@ -97,12 +100,12 @@ class AudioPlayer(QObject):
             self.is_playing = True
             self.is_paused = False
         except Exception as e:
-            print(f"播放失败: {e}")
+            logger.error(f"播放失败: {e}")
 
     def _callback(self, outdata, frames, time_info, status):
         """音频回调函数"""
         if status:
-            print(f"音频输出错误: {status}")
+            logger.error(f"音频输出错误: {status}")
 
         if self.is_paused or self.current_frame >= self.total_frames:
             outdata[:] = 0

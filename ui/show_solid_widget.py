@@ -156,18 +156,16 @@ class MeshView(gl.GLViewWidget):
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent=parent)
-        self.setBackgroundColor((240, 240, 240))
+        self.setBackgroundColor((40, 44, 45))
 
         # 内容项
         self.mesh_item: Optional[gl.GLMeshItem] = None
         self.edge_item: Optional[gl.GLLinePlotItem] = None
 
-        # 记录拖拽起点
+        # 记录拖拽状态
         self._dragging: bool = False
         self._drag_btn: Optional[QtCore.Qt.MouseButton] = None
-        self._drag_start_pos: Optional[QtCore.QPoint] = None
-        self._azimuth_on_press: float = 0.0
-        self._elevation_on_press: float = 0.0
+        self._last_pos: Optional[QtCore.QPoint] = None
 
         # 绑定的模型对象，用于获取/更新视角状态
         self.model: Optional[MeshModel] = None
@@ -187,13 +185,13 @@ class MeshView(gl.GLViewWidget):
         #     meshdata=md,
         #     smooth=True,
         #     shader='balloon',
-        #     color=(155/255.0, 164/255.0, 174/255.0, 1.0),
+        #     color=(140/255.0, 149/255.0, 159/255.0, 1.0),
         # )
         mesh_item = gl.GLMeshItem(
             meshdata=md,
             smooth=True,
             shader='shaded',
-            color=(155/255.0, 164/255.0, 174/255.0, 1.0),
+            color=(140/255.0, 149/255.0, 159/255.0, 1.0),
         )
         mesh_item.setGLOptions('opaque')
 
@@ -236,6 +234,25 @@ class MeshView(gl.GLViewWidget):
         self.opts['elevation'] = self.model.elevation_deg
         self.opts['distance'] = self.model.distance
         self.update()
+
+    # ---- 模型绕坐标轴旋转辅助 ----
+    def rotate_model_around_axis(self, angle_deg: float, x: float, y: float, z: float) -> None:
+        """
+        让模型绕指定轴旋转（右手坐标系，角度制）。
+        说明：
+            - 只改变模型自身的变换，不影响相机的 azimuth/elevation
+            - 同步旋转 mesh 本体与边线
+        """
+        if self.mesh_item is None:
+            return
+
+        self.mesh_item.rotate(angle_deg, x, y, z)
+        if self.edge_item is not None:
+            self.edge_item.rotate(angle_deg, x, y, z)
+
+    def rotate_model_around_y(self, angle_deg: float) -> None:
+        """让模型绕世界坐标系的 Y 轴旋转（右手坐标系，角度制）。"""
+        self.rotate_model_around_axis(angle_deg, 0, 1, 0)
 
     @staticmethod
     def _build_edges(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
@@ -342,28 +359,29 @@ class MeshView(gl.GLViewWidget):
         alpha = np.ones((num_vertices, 1), dtype=np.float64)
         return np.concatenate([rgb, alpha], axis=1).astype(np.float32)
 
-    # ---- 交互（中键拖拽旋转 + 滚轮缩放） ----
+    # ---- 交互（中键拖拽旋转模型 + 滚轮缩放） ----
     def mousePressEvent(self, ev: QtGui.QMouseEvent) -> None:  # type: ignore[override]
         if ev.button() == QtCore.Qt.MiddleButton:
             self._dragging = True
             self._drag_btn = QtCore.Qt.MiddleButton
-            self._drag_start_pos = ev.pos()
-            if self.model:
-                self._azimuth_on_press = self.model.azimuth_deg
-                self._elevation_on_press = self.model.elevation_deg
+            self._last_pos = ev.pos()
             ev.accept()
             return
         # 其他按键交给父类（保留默认平移/旋转等）
         super().mousePressEvent(ev)
 
     def mouseMoveEvent(self, ev: QtGui.QMouseEvent) -> None:  # type: ignore[override]
-        if self._dragging and self._drag_btn == QtCore.Qt.MiddleButton and self.model and self._drag_start_pos is not None:
-            delta = ev.pos() - self._drag_start_pos
+        if self._dragging and self._drag_btn == QtCore.Qt.MiddleButton and self._last_pos is not None:
+            delta = ev.pos() - self._last_pos
             # 将像素偏移映射为角度变化（灵敏度可调整）
             sensitivity = 0.5
-            self.model.azimuth_deg = self._azimuth_on_press - delta.x() * sensitivity
-            self.model.elevation_deg = np.clip(self._elevation_on_press + delta.y() * sensitivity, -89.9, 89.9)
-            self._apply_camera_from_model()
+            # 水平拖动：模型绕 Y 轴旋转
+            if delta.x() != 0:
+                self.rotate_model_around_axis(-delta.x() * sensitivity, 0, 1, 0)
+            # 垂直拖动：模型绕 X 轴旋转
+            if delta.y() != 0:
+                self.rotate_model_around_axis(delta.y() * sensitivity, 1, 0, 0)
+            self._last_pos = ev.pos()
             ev.accept()
             return
         super().mouseMoveEvent(ev)
@@ -372,7 +390,7 @@ class MeshView(gl.GLViewWidget):
         if ev.button() == QtCore.Qt.MiddleButton:
             self._dragging = False
             self._drag_btn = None
-            self._drag_start_pos = None
+            self._last_pos = None
             ev.accept()
             return
         super().mouseReleaseEvent(ev)
@@ -395,30 +413,43 @@ class MeshView(gl.GLViewWidget):
 # Controller 层 + 应用窗口
 # -----------------------------
 
-class ShowSolidWindow(QtWidgets.QMainWindow):
+class ShowSolidWindow:
+    """3D 模型查看器控制器（不继承 Qt 类）"""
+    
     def __init__(self, step_path: Optional[str] = None) -> None:
-        super().__init__()
-        self.setWindowTitle("STEP 实体查看器（中键旋转 / 滚轮缩放）")
-        self.setFixedSize(500, 350)
-
         # MVC 组装
         self.model = MeshModel(mesh_loader=GmshStepLoader())
         self.view = MeshView()
-
-        cw = QtWidgets.QWidget(self)
-        layout = QtWidgets.QVBoxLayout(cw)
+        
+        # 创建容器 widget
+        self._widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(self._widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.view)
-        self.setCentralWidget(cw)
-
+        
         if step_path:
             self.load_and_show(step_path)
-
+        
+        # 键盘快捷键：让模型绕 Y 轴旋转（模拟"Z 轴绕 Y 轴转动"的效果）
+        self._init_shortcuts()
+    
+    def get_widget(self) -> QtWidgets.QWidget:
+        """获取可嵌入的 widget 组件"""
+        return self._widget
+    
+    def _init_shortcuts(self) -> None:
+        """初始化键盘快捷键：Q/E 控制模型绕 Y 轴旋转。"""
+        rotate_left = QtWidgets.QShortcut(QtGui.QKeySequence("Q"), self._widget)
+        rotate_left.activated.connect(lambda: self.view.rotate_model_around_y(-10.0))
+        
+        rotate_right = QtWidgets.QShortcut(QtGui.QKeySequence("E"), self._widget)
+        rotate_right.activated.connect(lambda: self.view.rotate_model_around_y(10.0))
+    
     def load_and_show(self, step_path: str) -> None:
         try:
             self.model.load_from(step_path)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "加载失败", f"无法加载STEP文件:\n{exc}")
+            QtWidgets.QMessageBox.critical(self._widget, "加载失败", f"无法加载STEP文件:\n{exc}")
             return
         self.view.set_model(self.model)
 
@@ -432,9 +463,17 @@ def _parse_cli_path() -> Optional[str]:
 def main() -> None:
     app = QtWidgets.QApplication(sys.argv)
     # step_path = _parse_cli_path()
-    step_path = DEFAULT_DIR + "烟草吸盘治具（高速线）.STEP"
-    w = ShowSolidWindow(step_path)
-    w.show()
+    step_path = DEFAULT_DIR + "R87-Y160M.stp"
+    
+    # 创建一个主窗口来包装组件
+    main_window = QtWidgets.QMainWindow()
+    main_window.setWindowTitle("STEP 实体查看器（中键拖动旋转模型 / 滚轮缩放）")
+    # main_window.setFixedSize(500, 350)
+    
+    viewer = ShowSolidWindow(step_path)
+    main_window.setCentralWidget(viewer.get_widget())
+    main_window.show()
+    
     sys.exit(app.exec_())
 
 
