@@ -23,8 +23,7 @@ def analysis_worker(job_queue, result_queue):
         import numpy as _np
         import os as _os
         import json as _json
-        from base.predict_model import predict_from_audio
-        # from base.model_config import init_model_from_config as _init_model_from_config
+        from base.peak_detection_runner import run_peak_detection
     except Exception as e:
         # 若初始化即失败，尝试将错误回传并退出
         try:
@@ -40,10 +39,8 @@ def analysis_worker(job_queue, result_queue):
         job_id = job.get("job_id")
         npy_path = job.get("npy_path")
         sampling_rate = job.get("sampling_rate")
-        model_path = job.get("model_path")
+        model_name = job.get("model_name") or ""
         config_path = job.get("config_path")
-        gmm_path = job.get("gmm_path")
-        scaler_path = job.get("scaler_path")
         results = []
         try:
             segments = _np.load(npy_path)
@@ -52,17 +49,11 @@ def analysis_worker(job_queue, result_queue):
                 _os.remove(npy_path)
             except Exception:
                 pass
-            model_path_dict = {
-                "ae": model_path,
-                "gmm": gmm_path,
-                "scaler": scaler_path,
-            }
             try:
-                ret_str = predict_from_audio(
+                ret_str = run_peak_detection(
                     signals=[segments],
                     file_names=["current"],
                     fs=[sampling_rate],
-                    load_model_path=model_path_dict,
                     config_path=config_path,
                 )
                 ret = _json.loads(ret_str)

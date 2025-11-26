@@ -7,16 +7,16 @@
       "random_seed": null,
       "defaults": {
         "normal_range": [90, 95],
-        "abnormal_range": [85, 90]
+        "abnormal_range": [55, 60]
       },
       "channels": {
         "good_motor": {
           "normal_range": [90, 95],
-          "abnormal_range": [85, 90]
+          "abnormal_range": [55, 60]
         },
         "bad_motor": {
-          "normal_range": [75, 80],
-          "abnormal_range": [70, 75]
+          "normal_range": [65, 70],
+          "abnormal_range": [30, 40]
         }
       },
       "aggregate": {

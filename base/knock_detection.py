@@ -65,7 +65,7 @@ class KnockDetector:
         results: List[Dict[str, Any]] = []
         for idx in range(data.shape[0]):
             channel_name = self._resolve_channel_name(idx)
-            ch_signal = np.asarray(data[idx], copy=False)
+            ch_signal = np.array(data[idx], copy=False)
             ch_result = self._analyze_channel(ch_signal, sr, channel_name)
             results.append(ch_result)
         return KnockDetectionResult(channels=results)
