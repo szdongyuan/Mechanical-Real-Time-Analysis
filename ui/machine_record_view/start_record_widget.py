@@ -1,9 +1,10 @@
-from PyQt5.QtCore import QUrl, Qt, pyqtSignal
-from PyQt5.QtGui import QIcon, QDesktopServices, QFont, QPixmap, QPalette, QColor
+from PyQt5.QtCore import QUrl, Qt
+from PyQt5.QtGui import QIcon, QDesktopServices, QFont, QPalette, QColor
 from PyQt5.QtWidgets import QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QLineEdit, QFrame
 
 from consts.running_consts import DEFAULT_DIR
 from ui.show_solid_widget import ShowSolidWindow
+from my_controls.peak_scatter_widget import PeakScatterWidget
 
 
 class StartRecordWidget(QWidget):
@@ -14,8 +15,9 @@ class StartRecordWidget(QWidget):
         self.record_btn = QPushButton("启  动")
         self.stop_btn = QPushButton("停  止")
         self.audio_store_path_lineedit = QLineEdit()
-        self.about_dy_btn = QPushButton("关于东原")
+        self.about_dy_btn = QPushButton()
         self.select_store_path_action = None
+        self.peak_scatter = PeakScatterWidget()
 
         self.record_btn.setCheckable(True)
         self.stop_btn.setCheckable(True)
@@ -83,11 +85,20 @@ class StartRecordWidget(QWidget):
         container = QWidget()
         container.setStyleSheet("background-color: rgb(25, 25, 25);")
 
+        # 默认展示 3D 模型；若加载失败则回退到占位文本
+        step_widget = QLabel("STEP 模型未加载")
+        step_widget.setAlignment(Qt.AlignCenter)
+        step_widget.setStyleSheet("color: rgb(180, 180, 180);")
         step_path = DEFAULT_DIR + "ui/R87-Y160M.stp"
-        show_solid_window = ShowSolidWindow(step_path)
-        solid_widget = show_solid_window.get_widget()
-        solid_widget.setMinimumSize(550, 350)
-        solid_widget.setMaximumSize(700, 410)
+        if os.path.exists(step_path):
+            try:
+                show_solid_window = ShowSolidWindow(step_path)
+                solid_widget = show_solid_window.get_widget()
+                solid_widget.setMinimumSize(550, 350)
+                solid_widget.setMaximumSize(700, 410)
+                step_widget = solid_widget
+            except Exception as exc:
+                step_widget.setText(f"STEP 模型加载失败: {exc}")
         
         # 创建图片标签
         # solid_graph = QLabel()
@@ -97,17 +108,11 @@ class StartRecordWidget(QWidget):
         # solid_graph.setScaledContents(True)
         # solid_graph.setAlignment(Qt.AlignCenter)
 
-        scatter_plot = QLabel()
-        scatter_plot.setPixmap(QPixmap(DEFAULT_DIR + "ui/ui_pic/sequence_pic/scatter_plot.png"))
-        scatter_plot.setMaximumSize(700, 410)
-        scatter_plot.setScaledContents(True)
-        scatter_plot.setAlignment(Qt.AlignCenter)
-
         # 将图片放入容器布局
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(solid_widget, 1)  # 添加拉伸因子
-        layout.addWidget(scatter_plot, 1)   # 添加拉伸因子
+        layout.addWidget(step_widget, 1)  # 添加拉伸因子
+        layout.addWidget(self.peak_scatter, 1)   # 添加拉伸因子
         
         return container
 
@@ -153,6 +158,22 @@ class StartRecordWidget(QWidget):
     def _on_about_dy_clicked():
         browser = QDesktopServices()
         browser.openUrl(QUrl("https://suzhoudongyuan.com/"))
+
+    # 外部接口 -----------------------------------------------------------------
+    def set_peak_channels(self, channels):
+        try:
+            self.peak_scatter.set_channels(channels)
+        except Exception:
+            pass
+
+    def set_peak_threshold(self, threshold: float):
+        self.peak_scatter.set_default_threshold(threshold)
+
+    def update_peak_scatter(self, result_items):
+        self.peak_scatter.append_results(result_items)
+
+    def reset_peak_scatter(self):
+        self.peak_scatter.reset()
 
 
 if __name__ == "__main__":

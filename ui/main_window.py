@@ -1,17 +1,19 @@
 import json
 import os
 import tempfile
+import threading
 import time
+import multiprocessing as mp
 
 import numpy as np
 from scipy.signal import spectrogram
 
-from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import QTimer, Qt, QObject, pyqtSignal
 from PyQt5.QtWidgets import QMessageBox, QFileDialog
 
 from base.audio_data_manager import auto_save_data
 from base.database.fixed_time_ng_total import query_warning_between
+from base.analysis_worker_process import analysis_worker
 from base.indicator_engine import IndicatorEngine, PredictionItem
 from base.load_device_info import load_devices_data
 from base.sound_device_manager import get_default_device
@@ -23,7 +25,7 @@ from base.sound_device_manager import sd, change_default_mic
 from base.tcp.tcp_client import send_dict
 # from base.training_model_management import TrainingModelManagement
 
-from consts import error_code
+from consts import error_code, model_consts
 from consts.running_consts import DEFAULT_DIR
 
 # from ui.center_widget import CenterWidget
@@ -245,25 +247,17 @@ class MainWindowMode:
         return self.start_record_time
 
 
-    # @staticmethod
-    # def get_model_info(model_name):
-    #     code, query_result = TrainingModelManagement().get_model_path_from_json(model_name)
-    #     if code == error_code.OK and query_result:
-    #         item = query_result[0]
-    #         model_path = (item.get("path") or item.get("model_path") or "").strip()
-    #         config_path = (item.get("config_path") or "").strip()
-    #         gmm_path = (item.get("gmm_path") or "").strip()
-    #         scaler_path = (item.get("scaler_path") or "").strip()
-    #         if not os.path.isabs(model_path):
-    #             really_model_path = os.path.normpath(os.path.join(DEFAULT_DIR, model_path))
-    #         else:
-    #             really_model_path = os.path.normpath(model_path)
-    #         if not os.path.isabs(config_path):
-    #             really_config_path = os.path.normpath(os.path.join(DEFAULT_DIR, config_path))
-    #         else:
-    #             really_config_path = os.path.normpath(config_path)
-    #         return error_code.OK, (really_model_path, really_config_path, gmm_path, scaler_path)
-    #     return error_code.INVALID_QUERY, None
+    @staticmethod
+    def get_model_info(model_name: str):
+        """
+        查询模型及配置路径。
+        暂时仅支持 knock_peak_detector（直接使用配置文件路径）。
+        """
+        model_name = (model_name or "").strip()
+        if model_name == "knock_peak_detector":
+            peak_cfg = os.path.normpath(model_consts.PEAK_DETECTION_CONFIG_JSON)
+            return error_code.OK, ("", peak_cfg, "", "")
+        return error_code.INVALID_QUERY, None
 
 
 class MainWindowController:
@@ -279,7 +273,11 @@ class MainWindowController:
         self._analysis_running = False
         self._analysis_listener_thread = None
         self._analysis_starting = False
+        self._analysis_signal = AnalysisSignalEmitter()
+        self._analysis_signal.analysis_completed.connect(self._handle_analysis_results)
         self._temp_dir = os.path.join(tempfile.gettempdir(), "audio_segments_tmp")
+        os.makedirs(self._temp_dir, exist_ok=True)
+        self._peak_threshold = 3.5
 
         # 指示灯引擎与定时器
         self._indicator_engine = IndicatorEngine(red_add_seconds=3.0)
@@ -295,6 +293,8 @@ class MainWindowController:
 
         self.model.load_device_info()
         self.model.set_up_audio_store_zero()
+        self._init_peak_scatter_channels()
+        self._load_analysis_settings()
         self.view.hide_right_part_widget(len(self.model.selected_channels) < 2 )
         self.change_waveform_title()
 
@@ -348,6 +348,10 @@ class MainWindowController:
             self.logger.warning("请选择保存音频的路径")
             QMessageBox.warning(self.view, "提示", "请选择保存音频的路径")
             return
+        try:
+            self.view.start_record_widget.reset_peak_scatter()
+        except Exception:
+            pass
         self.view.audio_store_path_lineedit.setEnabled(False)
         self.model.data_struct.record_flag = True
         # self.view.set_light_color(self.view.green_light, "green")
@@ -404,6 +408,73 @@ class MainWindowController:
             else:
                 self.view.set_waveform_title([self.model.page_index * 2])
 
+    def _init_peak_scatter_channels(self):
+        channels = []
+        threshold = None
+        cfg_path = os.path.normpath(model_consts.PEAK_DETECTION_CONFIG_JSON)
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                channels = cfg.get("channels") or []
+                threshold = (cfg.get("peak_detection") or {}).get("zscore_threshold")
+            except Exception as exc:
+                self.logger.error(f"读取峰值配置失败: {exc}")
+        if not channels and self.model.selected_channels:
+            channels = [f"通道{i + 1}" for i in range(len(self.model.selected_channels))]
+        try:
+            self.view.start_record_widget.set_peak_channels(channels or ["通道1", "通道2"])
+            if threshold:
+                self._peak_threshold = float(threshold)
+                self.view.start_record_widget.set_peak_threshold(self._peak_threshold)
+        except Exception:
+            pass
+
+    def _load_analysis_settings(self):
+        settings = self._read_peak_detection_settings()
+        self.model.ai_analysis_config = settings
+        use_ai = bool(settings.get("use_ai", False))
+        interval = float(settings.get("analysis_interval", 3.5))
+        duration = float(settings.get("time", 4.0))
+        model_name = settings.get("model_name", "knock_peak_detector")
+        if use_ai:
+            self.model.build_audio_segment_extractor(
+                True,
+                extract_interval=interval,
+                segment_duration=duration,
+                on_extracted=self._handle_segments_extracted,
+            )
+            self.model.model_name = model_name
+            self.start_analysis_process()
+        else:
+            self.model.build_audio_segment_extractor(False)
+            self.model.model_name = ""
+            self.stop_analysis_process()
+
+    @staticmethod
+    def _read_peak_detection_settings():
+        default_cfg = {
+            "use_ai": True,
+            "time": 4.0,
+            "sample_rate": 44100,
+            "model_name": "knock_peak_detector",
+            "analysis_interval": 3.5,
+        }
+        path = os.path.normpath(model_consts.PEAK_DETECTION_SETTINGS_JSON)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        default_cfg.update(data.get("analysis", data))
+            except Exception:
+                pass
+        else:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(default_cfg, f, ensure_ascii=False, indent=4)
+        return default_cfg
+
     def save_audio_data(self, countdown_time):
         if countdown_time > self.model.total_display_time:
             return
@@ -417,6 +488,178 @@ class MainWindowController:
             self.view.audio_store_path_lineedit.setText(path)
             self.model.set_audio_store_path(path)
             self.model.save_store_path_to_txt(path)
+
+    def _handle_segments_extracted(self, segments: np.ndarray, sampling_rate: int):
+        if segments is None:
+            return
+        code, query_result = self.model.get_model_info(self.model.model_name)
+        if code != error_code.OK or not query_result:
+            return
+        _, config_path, _, _ = query_result
+        self.start_analysis_process()
+        job_id = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        npy_path = os.path.join(self._temp_dir, f"{job_id}.npy")
+        try:
+            np.save(npy_path, segments)
+            if self._analysis_job_q is not None:
+                self._analysis_job_q.put(
+                    {
+                        "job_id": job_id,
+                        "npy_path": npy_path,
+                        "sampling_rate": sampling_rate,
+                        "config_path": config_path,
+                    }
+                )
+        except Exception as exc:
+            self.logger.error(f"enqueue analysis job failed: {exc}")
+
+    def start_analysis_process(self):
+        if self._analysis_starting:
+            return
+        if self._analysis_proc is not None and self._analysis_proc.is_alive():
+            if not self._analysis_running:
+                self._analysis_running = True
+            if self._analysis_listener_thread is None:
+                self._start_analysis_listener()
+            return
+        self._analysis_starting = True
+        try:
+            self._analysis_ctx = mp.get_context("spawn")
+            self._analysis_job_q = self._analysis_ctx.Queue()
+            self._analysis_res_q = self._analysis_ctx.Queue()
+            self._analysis_proc = self._analysis_ctx.Process(
+                target=analysis_worker,
+                args=(self._analysis_job_q, self._analysis_res_q),
+                daemon=True,
+            )
+            self._analysis_proc.start()
+            self._analysis_running = True
+            self._start_analysis_listener()
+        except Exception as exc:
+            self.logger.error(f"启动分析进程失败: {exc}")
+        finally:
+            self._analysis_starting = False
+
+    def _start_analysis_listener(self):
+        if self._analysis_listener_thread is not None:
+            return
+
+        def _listen():
+            while self._analysis_running:
+                try:
+                    msg = self._analysis_res_q.get(timeout=0.5)
+                except Exception:
+                    continue
+                if not msg:
+                    continue
+                results = msg.get("results", [])
+                if results:
+                    self._analysis_signal.analysis_completed.emit(results)
+
+        self._analysis_listener_thread = threading.Thread(target=_listen, daemon=True)
+        self._analysis_listener_thread.start()
+
+    def _handle_analysis_results(self, results):
+        try:
+            try:
+                self.logger.info(
+                    "Peak detection results: %s",
+                    json.dumps(results, ensure_ascii=False),
+                )
+            except Exception:
+                self.logger.info("Peak detection results: %s", results)
+            points = self._parse_peak_results(results)
+            if not points:
+                return
+            self._indicator_engine.process_predictions(
+                [PredictionItem(result=pt["status"]) for pt in points]
+            )
+            try:
+                self.view.start_record_widget.update_peak_scatter(points)
+            except Exception as exc:
+                self.logger.error(f"更新散点图失败: {exc}")
+        except Exception as exc:
+            self.logger.error(f"处理峰值结果失败: {exc}")
+
+    def _parse_peak_results(self, result_packets):
+        parsed = []
+        if not result_packets:
+            return parsed
+        for packet in result_packets:
+            rows = packet.get("result") or []
+            for row in rows:
+                if not isinstance(row, (list, tuple)) or len(row) < 2:
+                    continue
+                label = row[0] if row else ""
+                status = "NG" if str(row[1]).upper() == "NG" else "OK"
+                detail_raw = row[2] if len(row) > 2 else {}
+                try:
+                    if isinstance(detail_raw, str):
+                        detail = json.loads(detail_raw)
+                    elif isinstance(detail_raw, dict):
+                        detail = detail_raw
+                    else:
+                        detail = {}
+                except Exception:
+                    detail = {}
+                channel = detail.get("channel") or self._extract_channel_from_label(label)
+                peak_value = (
+                    detail.get("max_zscore")
+                    or detail.get("max_flux")
+                    or detail.get("peak_value")
+                    or 0.0
+                )
+                threshold = detail.get("threshold") or self._peak_threshold
+                parsed.append(
+                    {
+                        "channel": channel,
+                        "peak_value": float(peak_value),
+                        "threshold": threshold,
+                        "status": status,
+                        "timestamp": time.time(),
+                    }
+                )
+        return parsed
+
+    @staticmethod
+    def _extract_channel_from_label(label: str):
+        if not label:
+            return "channel_0"
+        parts = str(label).split("::")
+        return parts[-1] if parts else label
+
+    def stop_analysis_process(self):
+        self._analysis_running = False
+        try:
+            if self._analysis_job_q is not None:
+                try:
+                    self._analysis_job_q.put(None)
+                except Exception:
+                    pass
+            if self._analysis_proc is not None:
+                self._analysis_proc.join(timeout=5)
+                if self._analysis_proc.is_alive():
+                    self._analysis_proc.terminate()
+        except Exception:
+            pass
+        finally:
+            try:
+                if self._analysis_job_q is not None:
+                    self._analysis_job_q.close()
+                    self._analysis_job_q.join_thread()
+            except Exception:
+                pass
+            try:
+                if self._analysis_res_q is not None:
+                    self._analysis_res_q.close()
+                    self._analysis_res_q.join_thread()
+            except Exception:
+                pass
+            self._analysis_proc = None
+            self._analysis_job_q = None
+            self._analysis_res_q = None
+            self._analysis_listener_thread = None
+            self._analysis_starting = False
 
     def check_infor_limit(self, countdown_time):
         now_ts = int(time.time())
@@ -533,6 +776,11 @@ class MainWindowController:
             # 绘制时频图
             self.view.wav_or_spect_graph.plot_spectrogram(spect_data[0], "left")
             self.view.wav_or_spect_graph.plot_spectrogram(spect_data[1], "right")
+
+
+class AnalysisSignalEmitter(QObject):
+    analysis_completed = pyqtSignal(list)
+
 
 def open_main_window():
     model = MainWindowMode()
