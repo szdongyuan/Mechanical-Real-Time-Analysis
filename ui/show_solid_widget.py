@@ -1,7 +1,9 @@
 import sys
 import math
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Protocol
+from collections import defaultdict
 
 import numpy as np
 
@@ -23,6 +25,7 @@ from consts.running_consts import DEFAULT_DIR
 class MeshData:
     vertices: np.ndarray  # (N, 3) float64
     faces: np.ndarray     # (M, 3) int32/64
+    edges_pos: Optional[np.ndarray] = field(default=None)  # 预计算的特征边顶点
 
     def bounds(self) -> Tuple[np.ndarray, np.ndarray]:
         if self.vertices.size == 0:
@@ -35,6 +38,69 @@ class MeshData:
 class MeshLoader(Protocol):
     def load(self, file_path: str) -> MeshData:
         ...
+
+
+def compute_feature_edges(vertices: np.ndarray, faces: np.ndarray, angle_threshold_deg: float = 1.0) -> np.ndarray:
+    """从三角面提取外部特征边（边界边 + 锐边），返回按端点对展开的顶点数组。
+    
+    Args:
+        vertices: 顶点数组 (N, 3)
+        faces: 面索引数组 (M, 3)
+        angle_threshold_deg: 锐边判定阈值（度），相邻面法线夹角超过此值的边会被保留
+    """
+    # 计算每个三角形的法线
+    def compute_face_normal(tri_idx: int) -> np.ndarray:
+        i, j, k = int(faces[tri_idx][0]), int(faces[tri_idx][1]), int(faces[tri_idx][2])
+        v0, v1, v2 = vertices[i], vertices[j], vertices[k]
+        n = np.cross(v1 - v0, v2 - v0)
+        norm = np.linalg.norm(n)
+        if norm > 1e-12:
+            n = n / norm
+        return n
+    
+    # 建立边到面的映射
+    edge_to_faces: dict = defaultdict(list)
+    for face_idx, tri in enumerate(faces):
+        i, j, k = int(tri[0]), int(tri[1]), int(tri[2])
+        e1 = (min(i, j), max(i, j))
+        e2 = (min(j, k), max(j, k))
+        e3 = (min(k, i), max(k, i))
+        edge_to_faces[e1].append(face_idx)
+        edge_to_faces[e2].append(face_idx)
+        edge_to_faces[e3].append(face_idx)
+    
+    # 筛选特征边：边界边（只属于1个面）或锐边（相邻面法线夹角大于阈值）
+    angle_threshold_rad = np.radians(angle_threshold_deg)
+    cos_threshold = np.cos(angle_threshold_rad)
+    
+    feature_edges: List[Tuple[int, int]] = []
+    for edge, face_list in edge_to_faces.items():
+        if len(face_list) == 1:
+            # 边界边：只属于一个三角形
+            feature_edges.append(edge)
+        elif len(face_list) == 2:
+            # 检查两个相邻面的法线夹角
+            n1 = compute_face_normal(face_list[0])
+            n2 = compute_face_normal(face_list[1])
+            cos_angle = np.dot(n1, n2)
+            # 夹角大于阈值 => cos值小于阈值
+            if cos_angle < cos_threshold:
+                feature_edges.append(edge)
+        # len > 2 的情况（非流形边）也保留
+        elif len(face_list) > 2:
+            feature_edges.append(edge)
+    
+    # 为GLLinePlotItem准备：将所有端点平铺，按 pairs 连接（0-1,2-3,...）
+    pos_list: List[np.ndarray] = []
+    for a, b in feature_edges:
+        pos_list.append(vertices[a])
+        pos_list.append(vertices[b])
+
+    if not pos_list:
+        return np.zeros((0, 3), dtype=np.float64)
+        
+    pos = np.array(pos_list, dtype=np.float64).reshape(-1, 3)
+    return pos
 
 
 class GmshStepLoader:
@@ -126,6 +192,88 @@ class GmshStepLoader:
             gmsh.finalize()
 
 
+class CachingMeshLoader:
+    """带缓存功能的网格加载器，包装其他加载器。
+    
+    缓存文件格式：.npz（numpy压缩格式）
+    缓存内容：vertices, faces, edges_pos
+    缓存策略：如果缓存文件存在且比源文件新，直接读取缓存
+    """
+    
+    def __init__(self, base_loader: MeshLoader, edge_angle_threshold: float = 1.0) -> None:
+        self.base_loader = base_loader
+        self.edge_angle_threshold = edge_angle_threshold
+    
+    def _get_cache_path(self, file_path: str) -> str:
+        """获取缓存文件路径。"""
+        return file_path + ".cache.npz"
+    
+    def _is_cache_valid(self, file_path: str, cache_path: str) -> bool:
+        """检查缓存是否有效（存在且比源文件新）。"""
+        if not os.path.exists(cache_path):
+            return False
+        try:
+            source_mtime = os.path.getmtime(file_path)
+            cache_mtime = os.path.getmtime(cache_path)
+            return cache_mtime > source_mtime
+        except OSError:
+            return False
+    
+    def _load_from_cache(self, cache_path: str) -> MeshData:
+        """从缓存加载网格数据。"""
+        data = np.load(cache_path)
+        return MeshData(
+            vertices=data['vertices'],
+            faces=data['faces'],
+            edges_pos=data['edges_pos']
+        )
+    
+    def _save_to_cache(self, cache_path: str, mesh: MeshData) -> None:
+        """保存网格数据到缓存。"""
+        try:
+            np.savez_compressed(
+                cache_path,
+                vertices=mesh.vertices,
+                faces=mesh.faces,
+                edges_pos=mesh.edges_pos
+            )
+        except Exception:
+            # 缓存保存失败不影响正常使用
+            pass
+    
+    def load(self, file_path: str) -> MeshData:
+        """加载网格数据，优先使用缓存。"""
+        cache_path = self._get_cache_path(file_path)
+        
+        # 尝试从缓存加载
+        if self._is_cache_valid(file_path, cache_path):
+            try:
+                return self._load_from_cache(cache_path)
+            except Exception:
+                # 缓存读取失败，继续使用原始加载
+                pass
+        
+        # 使用原始加载器加载
+        mesh = self.base_loader.load(file_path)
+        
+        # 计算特征边
+        edges_pos = compute_feature_edges(
+            mesh.vertices, 
+            mesh.faces, 
+            self.edge_angle_threshold
+        )
+        mesh = MeshData(
+            vertices=mesh.vertices,
+            faces=mesh.faces,
+            edges_pos=edges_pos
+        )
+        
+        # 保存到缓存
+        self._save_to_cache(cache_path, mesh)
+        
+        return mesh
+
+
 class MeshModel:
     """网格与交互状态。"""
 
@@ -156,7 +304,8 @@ class MeshView(gl.GLViewWidget):
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent=parent)
-        self.setBackgroundColor((40, 44, 45))
+        self._bg_color = (40, 44, 45)
+        self.setBackgroundColor(self._bg_color)
 
         # 内容项
         self.mesh_item: Optional[gl.GLMeshItem] = None
@@ -169,6 +318,22 @@ class MeshView(gl.GLViewWidget):
 
         # 绑定的模型对象，用于获取/更新视角状态
         self.model: Optional[MeshModel] = None
+        
+        # 自动旋转定时器：10秒一圈 = 360度/10秒 = 36度/秒
+        self._auto_rotate_enabled: bool = True
+        self._rotation_speed: float = 36.0  # 度/秒
+        self._timer_interval: int = 16  # ms (~60fps)
+        self._auto_rotate_timer = QtCore.QTimer(self)
+        self._auto_rotate_timer.timeout.connect(self._on_auto_rotate)
+        self._auto_rotate_timer.start(self._timer_interval)
+
+    def _on_auto_rotate(self) -> None:
+        """定时器回调：自动旋转模型。"""
+        if self._dragging or not self._auto_rotate_enabled:
+            return
+        # 每次旋转的角度 = 速度 * 时间间隔
+        angle = self._rotation_speed * (self._timer_interval / 1000.0)
+        self.rotate_model_around_y(angle)
 
     # ---- 显示与更新 ----
     def set_model(self, model: MeshModel) -> None:
@@ -179,26 +344,32 @@ class MeshView(gl.GLViewWidget):
         vertices = model.mesh.vertices
         faces = model.mesh.faces
 
-        # 构建MeshData并着色显示（标准着色，显式设置零件颜色）
+        # 创建背景色的不透明面，用于深度遮挡（隐藏被遮挡的边线）
         md = gl.MeshData(vertexes=vertices, faces=faces)
-        # mesh_item = gl.GLMeshItem(
-        #     meshdata=md,
-        #     smooth=True,
-        #     shader='balloon',
-        #     color=(140/255.0, 149/255.0, 159/255.0, 1.0),
-        # )
+        bg_color = tuple(c / 255.0 for c in self._bg_color) + (1.0,)
         mesh_item = gl.GLMeshItem(
             meshdata=md,
-            smooth=True,
-            shader='shaded',
-            color=(140/255.0, 149/255.0, 159/255.0, 1.0),
+            smooth=False,
+            shader=None,  # 纯色，无光照
+            color=bg_color,
         )
         mesh_item.setGLOptions('opaque')
 
-        # 生成边线（按端点对绘制线段：0-1, 2-3, ...）
-        edges_pos = self._build_edges(vertices, faces)
-        # edge_item = gl.GLLinePlotItem(pos=edges_pos, color=(0, 0, 0, 1), width=2.0, mode='lines', antialias=True)
-        edge_item = gl.GLLinePlotItem(pos=edges_pos, color=(0, 0, 0, 1), width=2.0, mode='lines')
+        # 使用缓存的边线数据，如果没有则实时计算
+        if model.mesh.edges_pos is not None:
+            edges_pos = model.mesh.edges_pos
+        else:
+            edges_pos = compute_feature_edges(vertices, faces)
+        
+        # 只显示边线，使用明亮的青白色
+        edge_item = gl.GLLinePlotItem(
+            pos=edges_pos, 
+            color=(0.85, 0.95, 1.0, 1.0),  # 明亮的青白色
+            width=1.5, 
+            mode='lines',
+            antialias=True
+        )
+        edge_item.setGLOptions('opaque')  # 启用深度测试
 
         # 清理旧项并添加
         if self.mesh_item:
@@ -208,6 +379,7 @@ class MeshView(gl.GLViewWidget):
 
         self.mesh_item = mesh_item
         self.edge_item = edge_item
+        # 先添加面，再添加边线，确保边线绘制在面之上
         self.addItem(self.mesh_item)
         self.addItem(self.edge_item)
 
@@ -253,37 +425,6 @@ class MeshView(gl.GLViewWidget):
     def rotate_model_around_y(self, angle_deg: float) -> None:
         """让模型绕世界坐标系的 Y 轴旋转（右手坐标系，角度制）。"""
         self.rotate_model_around_axis(angle_deg, 0, 1, 0)
-
-    @staticmethod
-    def _build_edges(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
-        """从三角面提取无向唯一边，返回按端点对展开的顶点数组。"""
-        edge_set = set()
-        for tri in faces:
-            i, j, k = int(tri[0]), int(tri[1]), int(tri[2])
-            e1 = (min(i, j), max(i, j))
-            e2 = (min(j, k), max(j, k))
-            e3 = (min(k, i), max(k, i))
-            edge_set.add(e1)
-            edge_set.add(e2)
-            edge_set.add(e3)
-
-        edges = sorted(list(edge_set))
-        # 为GLLinePlotItem准备：将所有端点平铺，按 pairs 连接（0-1,2-3,...）
-        pos_list: List[np.ndarray] = []
-        for a, b in edges:
-            pos_list.append(vertices[a])
-            pos_list.append(vertices[b])
-
-        pos = np.array(pos_list, dtype=np.float64).reshape(-1, 3)
-        # 将边线顶点相对模型中心轻微外扩，避免与面片深度冲突，确保轮廓始终可见
-        if vertices.size > 0:
-            vmin = vertices.min(axis=0)
-            vmax = vertices.max(axis=0)
-            center = (vmin + vmax) * 0.5
-            # 轻微外扩比例（足够避免Z冲突，又不致明显偏移）
-            scale = 1.002
-            pos = center + (pos - center) * scale
-        return pos
 
     @staticmethod
     def _compute_four_dir_lit_colors(
@@ -417,8 +558,10 @@ class ShowSolidWindow:
     """3D 模型查看器控制器（不继承 Qt 类）"""
     
     def __init__(self, step_path: Optional[str] = None) -> None:
-        # MVC 组装
-        self.model = MeshModel(mesh_loader=GmshStepLoader())
+        # MVC 组装 - 使用带缓存的加载器
+        base_loader = GmshStepLoader()
+        caching_loader = CachingMeshLoader(base_loader, edge_angle_threshold=1.0)
+        self.model = MeshModel(mesh_loader=caching_loader)
         self.view = MeshView()
         
         # 创建容器 widget
