@@ -36,7 +36,23 @@ class KnockDetector:
     def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config or {}
         self.sampling_rate = int(self.config.get("sampling_rate") or 44100)
-        self.channel_names: Sequence[str] = self.config.get("channels") or []
+        self.channel_names: List[str] = []
+        self.channel_thresholds: Dict[str, float] = {}
+        channels_cfg = self.config.get("channels") or []
+        for item in channels_cfg:
+            if isinstance(item, str):
+                self.channel_names.append(item)
+            elif isinstance(item, dict):
+                name = item.get("name")
+                if name:
+                    self.channel_names.append(name)
+                    if "zscore_threshold" in item:
+                        try:
+                            self.channel_thresholds[name] = float(item["zscore_threshold"])
+                        except (TypeError, ValueError):
+                            pass
+        if not self.channel_names and isinstance(channels_cfg, Sequence):
+            self.channel_names = list(channels_cfg)
 
         stft_cfg = self.config.get("stft") or {}
         self.window_name = stft_cfg.get("window", "hann")
@@ -98,13 +114,14 @@ class KnockDetector:
         flux = self._compute_flux(band_energy)
         max_flux = float(flux.max()) if flux.size else 0.0
         max_zscore = self._max_zscore(flux)
-        exceeded = max_zscore >= self.zscore_threshold
+        threshold = self.channel_thresholds.get(channel, self.zscore_threshold)
+        exceeded = max_zscore >= threshold
 
         return {
             "channel": channel,
             "max_flux": max_flux,
             "max_zscore": max_zscore,
-            "threshold": self.zscore_threshold,
+            "threshold": threshold,
             "exceed_threshold": exceeded,
         }
 

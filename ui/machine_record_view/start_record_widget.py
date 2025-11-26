@@ -1,3 +1,5 @@
+import os
+
 from PyQt5.QtCore import QUrl, Qt
 from PyQt5.QtGui import QIcon, QDesktopServices, QFont, QPalette, QColor
 from PyQt5.QtWidgets import QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QLineEdit, QFrame
@@ -168,6 +170,18 @@ class StartRecordWidget(QWidget):
 
     def set_peak_threshold(self, threshold: float):
         self.peak_scatter.set_default_threshold(threshold)
+
+    def set_peak_radius(self, radius: float):
+        try:
+            self.peak_scatter.set_ok_radius(radius)
+        except Exception:
+            pass
+
+    def set_peak_max_radius(self, radius: float):
+        try:
+            self.peak_scatter.set_max_radius(radius)
+        except Exception:
+            pass
 
     def update_peak_scatter(self, result_items):
         self.peak_scatter.append_results(result_items)

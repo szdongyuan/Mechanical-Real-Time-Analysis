@@ -1,7 +1,16 @@
 {
   "-notes": "Peak-detection parameters.",
   "sampling_rate": 44100,
-  "channels": ["good_motor", "bad_motor"],
+  "channels": [
+    {
+      "name": "good_motor",
+      "zscore_threshold": 4.5
+    },
+    {
+      "name": "bad_motor",
+      "zscore_threshold": 3.0
+    }
+  ],
   "stft": {
     "window": "hann",
     "frame_size": 1024,
