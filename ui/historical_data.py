@@ -39,15 +39,15 @@ import librosa
 import numpy as np
 
 from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QStandardItemModel, QStandardItem, QIcon
-from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QTableView, QHeaderView
+from PyQt5.QtGui import QStandardItemModel, QStandardItem, QIcon, QPalette, QColor
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QTableView, QHeaderView
 
 from base.audio_data_manager import get_record_audio_data_from_db, get_record_audio_data_path
 from base.player_audio import AudioPlayer
 from consts.running_consts import DEFAULT_DIR
 
 
-class HistoryDataWindow(QDialog):
+class HistoryDataWindow(QWidget):
     def __init__(self):
         super().__init__()
 
@@ -67,6 +67,12 @@ class HistoryDataWindow(QDialog):
         self.init_ui()
 
     def init_ui(self):
+        # 设置深色背景，与主界面风格统一
+        palette = self.palette()
+        palette.setColor(QPalette.Window, QColor(45, 45, 45))
+        self.setAutoFillBackground(True)
+        self.setPalette(palette)
+
         history_data_table_layout = self.create_history_data_table_layout()
 
         self.setLayout(history_data_table_layout)
@@ -74,29 +80,46 @@ class HistoryDataWindow(QDialog):
     def create_history_data_table_layout(self):
         self.history_data_table.setColumnWidth(4, 100)  # 设置操作列宽度为 100 像素
         self.history_data_table.verticalHeader().setDefaultSectionSize(40)
+        # 深色主题样式，与主界面风格统一
         self.history_data_table.setStyleSheet(
-            """QTableView::item {
-                    border-top: 1px solid rgb(130, 135, 144);
-                    color: black;
+            """QTableView {
+                    background-color: rgb(55, 55, 55);
+                    color: rgb(255, 255, 255);
+                    gridline-color: rgb(70, 70, 70);
+                    border: none;
+                    font-size: 15px;
+            }
+            QTableView::item {
+                    border-top: 1px solid rgb(70, 70, 70);
+                    color: rgb(255, 255, 255);
                     padding-left: 10px;
                     padding-right: 10px;
+            }
+            QTableView::item:selected {
+                    background-color: rgb(24, 144, 255);
+            }
+            QHeaderView::section {
+                    background-color: rgb(45, 45, 45);
+                    color: rgb(255, 255, 255);
+                    border: 1px solid rgb(70, 70, 70);
+                    padding: 5px;
+                    font-size: 15px;
+            }
+            QTableView QTableCornerButton::section {
+                    background-color: rgb(45, 45, 45);
+                    border: 1px solid rgb(70, 70, 70);
             }"""
         )
         self.history_data_table.model().setHorizontalHeaderLabels(
             ["文件名称", "录制时间", "结束时间", "操作员", "备注", "操作"]
         )
-        # self.history_data_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         header = self.history_data_table.horizontalHeader()
-        # for i in range(self.history_data_model.columnCount()):
-        #     header.setSectionResizeMode(i, QHeaderView.Interactive)
-        # # header.setStretchLastSection(True)
-        # header.setSectionResizeMode(5, QHeaderView.Stretch)
-        header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.Interactive)
-        header.setSectionResizeMode(4, QHeaderView.Interactive)
-        header.setSectionResizeMode(5, QHeaderView.Interactive)
+        # 设置所有列自动拉伸填充整个表格区域
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        # 固定列宽的列使用 Interactive 模式
+        header.setSectionResizeMode(3, QHeaderView.Interactive)  # 操作员
+        header.setSectionResizeMode(5, QHeaderView.Interactive)  # 操作
         self.history_data_table.setColumnWidth(3, 100)
-        self.history_data_table.setColumnWidth(4, 100)
         self.history_data_table.setColumnWidth(5, 100)
 
         # 数据加载改为显式接口调用：请调用 load_history_data()
