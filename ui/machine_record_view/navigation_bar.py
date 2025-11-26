@@ -12,7 +12,7 @@ class NavigationBar(QWidget):
 
         self.created_buttons = []
         self.channel_check = ChannelCheck(self)
-        self.channel_check.create_caheck_label(4)
+        self.channel_check.create_check_label(4)
 
         self.navition_listview = QListView()
         self.navition_listview.setIconSize(QSize(34, 34))
@@ -43,7 +43,7 @@ class NavigationBar(QWidget):
         self.setAutoFillBackground(True)
 
         self.setPalette(palette)
-        self.setFixedWidth(230)
+        self.setFixedWidth(250)
         # self.setWindowFlags(Qt.FramelessWindowHint)
         layout = QVBoxLayout()
         self.navition_listview.setMinimumHeight(500)
@@ -69,7 +69,7 @@ class NavigationBar(QWidget):
         # 将 6 个条目改为互斥可选按钮，颜色与 wav_or_spect_graph.py 保持一致
         self.add_item("功能模块")
         entries = [
-            (" 录制音频", DEFAULT_DIR + "ui/ui_pic/sequence_pic/shishijiance.png"),
+            (" 实时监测", DEFAULT_DIR + "ui/ui_pic/sequence_pic/shishijiance.png"),
             (" 历史数据", DEFAULT_DIR + "ui/ui_pic/sequence_pic/data.png"),
             (" 报警管理", DEFAULT_DIR + "ui/ui_pic/sequence_pic/jinggao.png"),
             (" 设备列表", DEFAULT_DIR + "ui/ui_pic/sequence_pic/shebei.png"),
@@ -86,7 +86,7 @@ class NavigationBar(QWidget):
             # )
             # 选中态颜色
             btn.setStyleSheet(
-                "QPushButton { border:none; color:rgb(255,255,255); text-align:left; padding-left:8px; background-color:rgb(55,55,55); }"
+                "QPushButton { border:none; color:rgb(255,255,255); text-align:left; padding-left:8px; background-color:rgb(55,55,55); font-size: 15px;}"
                 "QPushButton:checked { background-color: rgb(24, 144, 255); }"
             )
             self._nav_btn_group.addButton(btn)
@@ -110,7 +110,7 @@ class NavigationBar(QWidget):
         else:
             self.navition_listview.show()
             self.swap_size_btn.setText("<<")
-            self.setFixedWidth(230)
+            self.setFixedWidth(250)
 
     def add_button_to_listview(self, text: str, on_clicked=None, icon_url: str = None, row: int = None, item_height: int = None) -> QPushButton:
         """
@@ -188,7 +188,7 @@ class ChannelCheck(QWidget):
         # 设置背景色和最小高度，确保在深色导航栏中可见
         self.setStyleSheet("color: rgb(255, 255, 255); font-size: 15px;")
 
-    def create_caheck_label(self, channel:int):
+    def create_check_label(self, channel:int):
         # 如果已经存在布局，先移除旧布局，避免叠加
         if self.layout() is not None:
             old_layout = self.layout()
@@ -198,9 +198,10 @@ class ChannelCheck(QWidget):
         layout.setSpacing(10)
 
         self.check_result_labels.clear()
+        sensor_type = ["声压传感器", "震动传感器"]
         for i in range(channel):
             h_layout = QHBoxLayout()
-            h_layout.addWidget(QLabel(f"通道{i + 1}： 声压传感器"))
+            h_layout.addWidget(QLabel(f"通道{i + 1}： {sensor_type[i%2]}"))
             h_layout.addStretch()
 
             channel_result_label = QLabel()
