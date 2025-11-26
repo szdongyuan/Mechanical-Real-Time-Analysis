@@ -1,0 +1,31 @@
+[
+  {
+    "-notes": "Health-score settings.",
+    "module_name": "health_score",
+    "module_config": {
+      "precision": 1,
+      "random_seed": null,
+      "defaults": {
+        "normal_range": [90, 95],
+        "abnormal_range": [85, 90]
+      },
+      "channels": {
+        "good_motor": {
+          "normal_range": [90, 95],
+          "abnormal_range": [85, 90]
+        },
+        "bad_motor": {
+          "normal_range": [75, 80],
+          "abnormal_range": [70, 75]
+        }
+      },
+      "aggregate": {
+        "name": "overall",
+        "channels": ["good_motor", "bad_motor"],
+        "method": "weighted",
+        "weights": [0.5, 0.5]
+      }
+    }
+  }
+]
+
