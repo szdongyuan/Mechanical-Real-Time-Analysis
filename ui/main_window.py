@@ -348,10 +348,11 @@ class MainWindowController:
             self.logger.warning("请选择保存音频的路径")
             QMessageBox.warning(self.view, "提示", "请选择保存音频的路径")
             return
-        try:
-            self.view.start_record_widget.reset_peak_scatter()
-        except Exception:
-            pass
+        if self.model.ai_analysis_config.get("use_ai", False):
+            try:
+                self.view.start_record_widget.reset_peak_scatter()
+            except Exception:
+                pass
         self.view.audio_store_path_lineedit.setEnabled(False)
         self.model.data_struct.record_flag = True
         # self.view.set_light_color(self.view.green_light, "green")
@@ -585,6 +586,7 @@ class MainWindowController:
         parsed = []
         if not result_packets:
             return parsed
+        health_scores = self._collect_health_scores(result_packets)
         for packet in result_packets:
             rows = packet.get("result") or []
             for row in rows:
@@ -603,6 +605,7 @@ class MainWindowController:
                 except Exception:
                     detail = {}
                 channel = detail.get("channel") or self._extract_channel_from_label(label)
+                channel_key = self._normalize_channel_key(channel)
                 peak_value = (
                     detail.get("max_zscore")
                     or detail.get("max_flux")
@@ -617,9 +620,30 @@ class MainWindowController:
                         "threshold": threshold,
                         "status": status,
                         "timestamp": time.time(),
+                        "health_score": health_scores.get(channel_key),
                     }
                 )
         return parsed
+
+    @staticmethod
+    def _collect_health_scores(result_packets):
+        health_map = {}
+        for packet in result_packets:
+            health = packet.get("health_scores") or {}
+            if not isinstance(health, dict):
+                continue
+            for name, score in health.items():
+                try:
+                    health_map[str(name)] = float(score)
+                except Exception:
+                    continue
+        return health_map
+
+    @staticmethod
+    def _normalize_channel_key(channel: str):
+        if channel is None:
+            return ""
+        return str(channel).strip()
 
     @staticmethod
     def _extract_channel_from_label(label: str):

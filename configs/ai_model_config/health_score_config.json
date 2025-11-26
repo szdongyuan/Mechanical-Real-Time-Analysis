@@ -12,11 +12,11 @@
       "channels": {
         "good_motor": {
           "normal_range": [90, 95],
-          "abnormal_range": [55, 60]
+          "abnormal_range": [10, 20]
         },
         "bad_motor": {
-          "normal_range": [65, 70],
-          "abnormal_range": [30, 40]
+          "normal_range": [45, 50],
+          "abnormal_range": [0, 5]
         }
       },
       "aggregate": {
