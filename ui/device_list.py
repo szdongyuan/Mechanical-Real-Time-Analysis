@@ -4,8 +4,8 @@ import os
 from datetime import datetime
 
 from PyQt5.QtCore import Qt, QItemSelectionModel
-from PyQt5.QtGui import QStandardItem, QStandardItemModel
-from PyQt5.QtWidgets import QApplication, QAbstractItemView, QDialog, QHBoxLayout, QLabel, QListView, QFrame
+from PyQt5.QtGui import QStandardItem, QStandardItemModel, QPalette, QColor
+from PyQt5.QtWidgets import QApplication, QAbstractItemView, QWidget, QHBoxLayout, QLabel, QListView, QFrame
 from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QComboBox, QMessageBox
 
 from base.data_struct.data_deal_struct import DataDealStruct
@@ -16,7 +16,7 @@ from ui.calibration_window import CalibrationWindow
 # from ui.system_information_textedit import log_controller
 
 
-class DeviceListWindow(QDialog):
+class DeviceListWindow(QWidget):
 
     def __init__(self):
         super().__init__()
@@ -35,7 +35,14 @@ class DeviceListWindow(QDialog):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        # 设置深色背景，与主界面风格统一
+        palette = self.palette()
+        palette.setColor(QPalette.Window, QColor(45, 45, 45))
+        self.setAutoFillBackground(True)
+        self.setPalette(palette)
+
+        # 应用深色主题样式
+        self._apply_dark_theme()
 
         api_layout = self.create_api_layout()
         device_list_layout = self.create_device_list_layout()
@@ -48,7 +55,8 @@ class DeviceListWindow(QDialog):
 
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
-        line.setFixedHeight(20)
+        line.setFixedHeight(1)
+        line.setStyleSheet("background-color: rgb(70, 70, 70); border: none;")
 
         layout = QVBoxLayout()
         layout.addLayout(api_layout)
@@ -58,6 +66,65 @@ class DeviceListWindow(QDialog):
         layout.addLayout(btn_layout)
 
         self.setLayout(layout)
+
+    def _apply_dark_theme(self):
+        """应用深色主题样式"""
+        # 下拉框样式
+        combobox_style = """
+            QComboBox {
+                background-color: rgb(70, 70, 70);
+                color: rgb(255, 255, 255);
+                border: 1px solid rgb(90, 90, 90);
+                border-radius: 3px;
+                padding: 5px 10px;
+                font-size: 15px;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 20px;
+                border: none;
+                background: transparent;
+            }
+            QComboBox::down-arrow {
+                image: url(./ui/ui_pic/shanglajiantou.png);
+                width: 12px;
+                height: 12px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: rgb(55, 55, 55);
+                color: rgb(255, 255, 255);
+                selection-background-color: rgb(24, 144, 255);
+                border: 1px solid rgb(70, 70, 70);
+            }
+        """
+        self.api_combo_box.setStyleSheet(combobox_style)
+
+        # 列表视图样式
+        listview_style = """
+            QListView {
+                background-color: rgb(55, 55, 55);
+                color: rgb(255, 255, 255);
+                border: 1px solid rgb(70, 70, 70);
+                border-radius: 3px;
+                font-size: 15px;
+            }
+            QListView::item {
+                padding: 5px;
+            }
+            QListView::item:selected {
+                background-color: rgb(24, 144, 255);
+            }
+            QListView::item:hover {
+                background-color: rgb(70, 70, 70);
+            }
+        """
+        self.list_view.setStyleSheet(listview_style)
+        self.channel_list.setStyleSheet(listview_style)
+
+        # 标签样式
+        label_style = "color: rgb(255, 255, 255); font-size: 15px;"
+        self.setStyleSheet(f"QLabel {{ {label_style} }}")
 
         # 应用已保存配置到控件（若存在）
         self._apply_saved_config()
@@ -106,11 +173,32 @@ class DeviceListWindow(QDialog):
     def create_btn_layout(self):
         btn_layout = QHBoxLayout()
 
+        # 深色主题按钮样式
+        btn_style = """
+            QPushButton {
+                background-color: rgb(70, 70, 70);
+                color: rgb(255, 255, 255);
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 15px;
+            }
+            QPushButton:hover {
+                background-color: rgb(24, 144, 255);
+            }
+            QPushButton:pressed {
+                background-color: rgb(20, 120, 220);
+            }
+        """
+
         check_btn = QPushButton(" 校  准 ")
+        check_btn.setStyleSheet(btn_style)
         check_btn.clicked.connect(self.on_click_check_btn)
         ok_btn = QPushButton(" 确  认 ")
+        ok_btn.setStyleSheet(btn_style)
         ok_btn.clicked.connect(self.on_click_ok_btn)
         cancel_btn = QPushButton(" 取  消 ")
+        cancel_btn.setStyleSheet(btn_style)
         cancel_btn.clicked.connect(self.on_click_cancel_btn)
         btn_layout.addWidget(check_btn)
         btn_layout.addStretch()
@@ -231,7 +319,7 @@ class DeviceListWindow(QDialog):
 
     def on_select_item(self, index):
         self.selected_device = self.device_list[index.row()]
-        log_controller.info(f"已选择硬件{self.selected_device['name']}")
+        # log_controller.info(f"已选择硬件{self.selected_device['name']}")
 
         max_channels = self.selected_device.get("max_input_channels", 0)
         self.channel_list.model().clear()

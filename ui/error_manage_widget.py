@@ -29,7 +29,7 @@
 import sys
 
 from PyQt5.QtCore import Qt, QSize, QEvent
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from PyQt5.QtGui import QStandardItemModel, QStandardItem, QPalette, QColor
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTableView, QHeaderView
 from PyQt5.QtWidgets import QItemDelegate, QPushButton, QComboBox
 
@@ -52,17 +52,45 @@ class ErrorManageWidget(QWidget):
         self.init_ui()
 
     def init_ui(self):
+        # 设置深色背景，与主界面风格统一
+        palette = self.palette()
+        palette.setColor(QPalette.Window, QColor(45, 45, 45))
+        self.setAutoFillBackground(True)
+        self.setPalette(palette)
+
         error_manage_table_layout = self.create_error_manage_table_layout()
         self.setLayout(error_manage_table_layout)
 
     def create_error_manage_table_layout(self):
         self.error_manage_table.verticalHeader().setDefaultSectionSize(40)
+        # 深色主题样式，与主界面风格统一
         self.error_manage_table.setStyleSheet(
-            """QTableView::item {
-                border-top: 1px solid rgb(130, 135, 144);
-                color: black;
+            """QTableView {
+                    background-color: rgb(55, 55, 55);
+                    color: rgb(255, 255, 255);
+                    gridline-color: rgb(70, 70, 70);
+                    border: none;
+                    font-size: 15px;
+            }
+            QTableView::item {
+                border-top: 1px solid rgb(70, 70, 70);
+                color: rgb(255, 255, 255);
                 padding-left: 10px;
                 padding-right: 10px;
+            }
+            QTableView::item:selected {
+                    background-color: rgb(24, 144, 255);
+            }
+            QHeaderView::section {
+                    background-color: rgb(45, 45, 45);
+                    color: rgb(255, 255, 255);
+                    border: 1px solid rgb(70, 70, 70);
+                    padding: 5px;
+                    font-size: 15px;
+            }
+            QTableView QTableCornerButton::section {
+                    background-color: rgb(45, 45, 45);
+                    border: 1px solid rgb(70, 70, 70);
             }"""
         )
         self.error_manage_table.model().setHorizontalHeaderLabels(
@@ -80,16 +108,13 @@ class ErrorManageWidget(QWidget):
             ]
         )
         header = self.error_manage_table.horizontalHeader()
-        # for i in range(self.error_manage_model.columnCount()):
-        #     header.setSectionResizeMode(i, QHeaderView.Interactive)
-        # # header.setStretchLastSection(True)
-        # header.setSectionResizeMode(6, QHeaderView.Stretch)
-        header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        # 空白单元格（按钮列、下拉列）至少 150 像素
-        # header.setSectionResizeMode(7, QHeaderView.Interactive)
-        header.setSectionResizeMode(8, QHeaderView.Interactive)
-        # self.error_manage_table.setColumnWidth(7, 150)
-        self.error_manage_table.setColumnWidth(8, 100)
+        # 设置所有列自动拉伸填充整个表格区域
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        # 固定列宽的列使用 Interactive 模式
+        header.setSectionResizeMode(7, QHeaderView.Interactive)  # 操作按钮列
+        header.setSectionResizeMode(8, QHeaderView.Interactive)  # 处理状态下拉框列
+        self.error_manage_table.setColumnWidth(7, 150)
+        self.error_manage_table.setColumnWidth(8, 120)
 
         # 数据加载改为显式接口调用：请调用 load_warning_data()
 
@@ -181,11 +206,40 @@ class ErrorManageWidget(QWidget):
         return ""
 
     def setup_combobox(self, audio_datas):
+        # 深色主题下拉框样式
+        dark_combobox_style = """
+            QComboBox {
+                background-color: rgb(70, 70, 70);
+                color: rgb(255, 255, 255);
+                border: 1px solid rgb(90, 90, 90);
+                border-radius: 3px;
+                padding: 3px 8px;
+                font-size: 15px;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 20px;
+                border: none;
+                background: transparent;
+            }
+            QComboBox::down-arrow {
+                image: url(./ui/ui_pic/shanglajiantou.png);
+                width: 12px;
+                height: 12px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: rgb(55, 55, 55);
+                color: rgb(255, 255, 255);
+                selection-background-color: rgb(24, 144, 255);
+                border: 1px solid rgb(70, 70, 70);
+            }
+        """
         for row in range(self.error_manage_model.rowCount()):
             index = self.error_manage_model.index(row, 8)
             combobox = QComboBox()
             combobox.addItems(["确认已处理", "确认未处理", "未确认", "忽略"])
-            combobox.setStyleSheet(ui_style_const.qcombobox_stytle)
+            combobox.setStyleSheet(dark_combobox_style)
             combobox.setCurrentText(audio_datas[row][7])
             # 禁用滚轮修改选项
             combobox.installEventFilter(self)
@@ -204,14 +258,35 @@ class ErrorManageWidget(QWidget):
         model = table.model()  # 获取当前模型
         btn_col = model.columnCount() - 3  # 使用模型列数
 
+        # 深色主题按钮样式
+        dark_btn_style = """
+            QPushButton {
+                background-color: rgb(70, 70, 70);
+                color: rgb(255, 255, 255);
+                border: none;
+                border-radius: 3px;
+                padding: 4px 10px;
+                font-size: 15px;
+            }
+            QPushButton:hover {
+                background-color: rgb(24, 144, 255);
+            }
+            QPushButton:pressed {
+                background-color: rgb(20, 120, 220);
+            }
+        """
+
         for row in range(model.rowCount()):
             deal_btn = QPushButton("处理")
+            deal_btn.setStyleSheet(dark_btn_style)
             deal_btn.clicked.connect(lambda _, r=row: self.on_deal_btn_clicked(r))
 
             ignore_btn = QPushButton("忽略")
+            ignore_btn.setStyleSheet(dark_btn_style)
             ignore_btn.clicked.connect(lambda _, r=row: self.on_ignore_btn_clicked(r))
 
             container = QWidget()
+            container.setStyleSheet("background-color: rgb(55, 55, 55);")
             layout = QHBoxLayout(container)
             layout.addWidget(deal_btn)
             layout.addWidget(ignore_btn)
