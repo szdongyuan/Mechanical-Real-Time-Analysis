@@ -134,6 +134,12 @@ class RecordMachineAudioModel:
         self.max_points = self.total_display_time * self.sampling_rate
         self.plot_points_section = self.plot_time * self.sampling_rate
         self.buffer_len = 30 * self.sampling_rate
+        
+        # 降采样因子：用于显示时减少数据点，提升绑图性能
+        # 220500 / 50 ≈ 4410 点，足够显示波形细节
+        self.display_downsample_factor = 50
+        # 频谱图使用较小的 nfft 值以减少计算量
+        self.spectrogram_nfft = 256
 
         self.select_device_name = None
 
@@ -348,6 +354,8 @@ class RecordMachineAudioModel:
 
 class RecordMachineAudioView(QWidget):
     view_shown = pyqtSignal()
+    # 新增：用于从子线程安全地更新绑图的信号
+    update_plot_signal = pyqtSignal(object, object, object, object)
 
     def __init__(self):
         super().__init__()
@@ -511,6 +519,9 @@ class RecordMachineAudioController:
         self._plot_thread = None
         self._plot_counter = 0
 
+        # 连接绑图更新信号到槽函数（确保在主线程更新 UI）
+        self.view.update_plot_signal.connect(self._do_update_plot)
+
         # 指示灯引擎与定时器
         self._indicator_engine = IndicatorEngine(red_add_seconds=3.0)
         self._light_timer = QTimer()
@@ -604,6 +615,44 @@ class RecordMachineAudioController:
             freqs, times_arr, sxx = spectrogram(plot_audio_section, nfft=self.model.nfft, fs=self.model.fs)
             self.view.chart_graph.draw_stftfrom(freqs, times_arr, sxx)
 
+    def _do_update_plot(self, y_downsampled, freqs, times_arr, np_sxx_log):
+        """主线程槽函数：安全地更新 UI 绑图（接收已降采样的数据）"""
+        try:
+            self.view.chart_graph.update_waveform(y_downsampled)
+            self.view.chart_graph.update_stftfrom(freqs, times_arr, np_sxx_log)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _downsample_waveform(data, factor):
+        """
+        对波形数据进行降采样，保留波峰波谷特征（max-min 包络法）
+        
+        参数:
+            data: 原始音频数据
+            factor: 降采样因子
+        返回:
+            降采样后的数据
+        """
+        if factor <= 1 or len(data) < factor * 2:
+            return data
+        
+        # 将数据分成多个块，每块取最大值和最小值交替显示
+        n_blocks = len(data) // factor
+        truncated = data[:n_blocks * factor]
+        reshaped = truncated.reshape(n_blocks, factor)
+        
+        # 获取每个块的最大值和最小值
+        maxes = np.max(reshaped, axis=1)
+        mins = np.min(reshaped, axis=1)
+        
+        # 交替排列最小值和最大值，保留波形包络
+        result = np.empty(n_blocks * 2, dtype=data.dtype)
+        result[0::2] = mins
+        result[1::2] = maxes
+        
+        return result
+
     def update_plot(self, selected_channels, audio_data, canvas):
         while True:
             if not self.model.data_struct.record_flag:
@@ -626,11 +675,22 @@ class RecordMachineAudioController:
                     else:
                         y = np.zeros(pps, dtype=buf.dtype)
                         y[-last_idx:] = buf[:last_idx]
-            canvas.update_waveform(y)
-            freqs, times_arr, sxx = spectrogram(y, nfft=self.model.nfft, fs=self.model.fs)
+            
+            # 对波形数据进行降采样（提升绑图性能）
+            downsample_factor = self.model.display_downsample_factor
+            y_downsampled = self._downsample_waveform(y, downsample_factor)
+            
+            # 对原始数据计算频谱（先降采样再计算以减少开销）
+            # 使用较低的采样率计算 spectrogram，保持时频分辨率
+            y_for_spec = y[::4] if len(y) > 10000 else y  # spectrogram 用 4x 降采样
+            fs_for_spec = self.model.fs // 4 if len(y) > 10000 else self.model.fs
+            freqs, times_arr, sxx = spectrogram(y_for_spec, nfft=self.model.spectrogram_nfft, fs=fs_for_spec)
             sxx_log = np.log(sxx / 1e-11)
-            np_sxx_log = sxx_log / np.max(sxx_log)
-            canvas.update_stftfrom(freqs, times_arr, np_sxx_log)
+            max_val = np.max(sxx_log)
+            np_sxx_log = sxx_log / max_val if max_val != 0 else sxx_log
+            
+            # 通过信号发射数据，在主线程中更新 UI（避免跨线程操作 UI）
+            self.view.update_plot_signal.emit(y_downsampled.copy(), freqs, times_arr, np_sxx_log)
             time.sleep(1)
 
     def on_audio_path_changed(self, text):

@@ -80,6 +80,8 @@ class HistoryDataWindow(QWidget):
     def create_history_data_table_layout(self):
         self.history_data_table.setColumnWidth(4, 100)  # 设置操作列宽度为 100 像素
         self.history_data_table.verticalHeader().setDefaultSectionSize(40)
+        # 隐藏左侧行号列，使其与背景色一致
+        self.history_data_table.verticalHeader().setVisible(False)
         # 深色主题样式，与主界面风格统一
         self.history_data_table.setStyleSheet(
             """QTableView {

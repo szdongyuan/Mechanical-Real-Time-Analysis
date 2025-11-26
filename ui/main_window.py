@@ -745,28 +745,36 @@ class MainWindowController:
             wavefrom_data: list = list()
             spect_data: list = list()
             for i in range(2):
-                buf = self.model.data_struct.audio_data[self.model.page_index * 2 + i]
+                channel_idx = self.model.page_index * 2 + i
+                buf = self.model.data_struct.audio_data[channel_idx]
                 pps = self.model.plot_points_section
-                if np.all(buf != 0):
-                    y = buf[-pps:]
+                
+                # 优化：直接使用 storage_filled_len 获取有效数据长度，避免遍历整个数组
+                # 原来的 np.all(buf != 0) 和 np.flatnonzero(buf) 需要遍历 2600 万个元素
+                filled_len = int(self.model.storage_filled_len[channel_idx])
+                
+                if filled_len >= pps:
+                    # 数据足够，直接取最后 pps 个点
+                    y = buf[filled_len - pps:filled_len]
+                elif filled_len > 0:
+                    # 数据不足，前面补零
+                    y = np.zeros(pps, dtype=buf.dtype)
+                    y[-filled_len:] = buf[:filled_len]
                 else:
-                    nz = np.flatnonzero(buf)
-                    if nz.size == 0:
-                        y = np.zeros(pps, dtype=buf.dtype)
-                    else:
-                        last_idx = int(nz[-1]) + 1
-                        if last_idx >= pps:
-                            y = buf[last_idx - pps:last_idx]
-                        else:
-                            y = np.zeros(pps, dtype=buf.dtype)
-                            y[-last_idx:] = buf[:last_idx]
+                    # 没有数据
+                    y = np.zeros(pps, dtype=buf.dtype)
+                
                 wavefrom_data.append(y)
-                freqs, times_arr, sxx = spectrogram(y, nfft=self.model.nfft, fs=self.model.sampling_rate)
+                
+                # 优化：对原始数据降采样后再计算 spectrogram，减少计算开销
+                downsample_factor = 4
+                y_for_spec = y[::downsample_factor] if len(y) > 10000 else y
+                fs_for_spec = self.model.sampling_rate // downsample_factor if len(y) > 10000 else self.model.sampling_rate
+                freqs, times_arr, sxx = spectrogram(y_for_spec, nfft=self.model.nfft, fs=fs_for_spec)
+                
                 sxx_log = np.log(sxx / 1e-11)
-                np_sxx_log = (sxx_log / np.max(sxx_log)).T
-                # if self.model.infor_limit_config.get("grad_diff", True):
-                #     np_sxx_amp = np.abs(np.gradient(np_sxx_log, axis=0))
-                #     np_sxx_log = np.max(np_sxx_log, 0) * np_sxx_amp
+                max_val = np.max(sxx_log)
+                np_sxx_log = (sxx_log / max_val).T if max_val != 0 else sxx_log.T
                 spect_data.append((freqs, times_arr, np_sxx_log))
             
             # 绘制波形图

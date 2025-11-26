@@ -82,7 +82,7 @@ class MultipleChartsGraph(QWidget):
             self.curve_line_list.append(line_i_curve)
         else:
             self.curve_line_list[0] = line_i_curve
-        self.waveform_plot.draw()
+        self.waveform_plot.draw_idle()  # 使用 draw_idle() 避免阻塞
 
     def draw_stftfrom(self, freqs, time, sxx):
         shifted_time = time - time[-1]
@@ -97,43 +97,85 @@ class MultipleChartsGraph(QWidget):
             self.spec_im_list.append(im)
         else:
             self.spec_im_list[0] = im
-        self.stft_plot.draw()
+        self.stft_plot.draw_idle()  # 使用 draw_idle() 避免阻塞
 
-    def update_waveform(self, audio_data):
-        if len(self.curve_line_list) == 0:
-            return
+    def update_waveform(self, audio_data, plot_time=5.0):
+        """
+        更新波形图（支持动态长度的降采样数据）
+        
+        参数:
+            audio_data: 音频数据（可以是降采样后的数据）
+            plot_time: 显示的时间范围（秒），默认5秒
+        """
+        ax = self.waveform_plot.figure.gca()
+        
+        # 生成新的 x 轴数据
+        x_data = np.linspace(-plot_time, 0, num=len(audio_data))
+        
+        # 检查曲线是否存在且数据长度是否匹配
+        if len(self.curve_line_list) > 0 and self.curve_line_list[0] is not None:
+            old_xdata = self.curve_line_list[0].get_xdata()
+            if len(old_xdata) == len(audio_data):
+                # 长度相同，只更新 y 数据（最快）
+                self.curve_line_list[0].set_ydata(audio_data)
+            else:
+                # 长度不同，更新 x 和 y 数据
+                self.curve_line_list[0].set_data(x_data, audio_data)
+        else:
+            # 没有曲线，需要创建
+            ax.clear()
+            ax.margins(0)
+            line = ax.plot(x_data, audio_data)[0]
+            ax.set_xlabel("Time (s)", fontsize=8)
+            ax.set_ylabel("Amplitude", fontsize=8)
+            ax.tick_params(axis="both", labelsize=8)
+            if len(self.curve_line_list) == 0:
+                self.curve_line_list.append(line)
+            else:
+                self.curve_line_list[0] = line
 
+        # 计算 y 轴范围
         y_max = float(np.max(audio_data))
         y_min = float(np.min(audio_data))
-        self.curve_line_list[0].set_ydata(audio_data)
-        ax = self.waveform_plot.figure.gca()
         # 对称设置上下限，避免画面跳动过大；全零时给一个默认范围
         v = max(abs(y_min), abs(y_max))
         if v == 0:
             v = 1.0
         ax.set_ylim(-v, v)
-        self.waveform_plot.draw()
+        self.waveform_plot.draw_idle()  # 使用 draw_idle() 避免阻塞
 
     def update_stftfrom(self, freqs, time, np_sxx_log):
         shifted_time = time - time[-1]
         fig = self.stft_plot.figure
         ax = fig.gca()
+        
+        # 优化：复用现有的 mesh 对象，只更新数据，避免每帧重建
         if len(self.spec_im_list) > 0 and self.spec_im_list[0] is not None:
-            self.spec_im_list[0].remove()
-        im = ax.pcolormesh(shifted_time, freqs, np_sxx_log, shading="auto")
-        if len(self.spec_im_list) == 0:
-            self.spec_im_list.append(im)
+            try:
+                # 使用 set_array 只更新数据，性能大幅提升
+                self.spec_im_list[0].set_array(np_sxx_log.ravel())
+            except Exception:
+                # 如果形状不匹配，重新创建
+                self.spec_im_list[0].remove()
+                im = ax.pcolormesh(shifted_time, freqs, np_sxx_log, shading="auto")
+                self.spec_im_list[0] = im
         else:
-            self.spec_im_list[0] = im
-        self.stft_plot.draw()
+            # 首次创建 mesh
+            im = ax.pcolormesh(shifted_time, freqs, np_sxx_log, shading="auto")
+            if len(self.spec_im_list) == 0:
+                self.spec_im_list.append(im)
+            else:
+                self.spec_im_list[0] = im
+        
+        self.stft_plot.draw_idle()  # 使用 draw_idle() 避免阻塞
 
     def clear(self):
         if self.waveform_plot is not None:
             self.waveform_plot.figure.clear()
-            self.waveform_plot.draw()
+            self.waveform_plot.draw_idle()  # 使用 draw_idle() 避免阻塞
         if self.stft_plot is not None:
             self.stft_plot.figure.clear()
-            self.stft_plot.draw()
+            self.stft_plot.draw_idle()  # 使用 draw_idle() 避免阻塞
         self.curve_line_list = list()
         self.spec_im_list = list()
 
