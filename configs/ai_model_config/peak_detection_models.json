@@ -1,0 +1,10 @@
+{
+  "-notes": "Peak-detection switch and timing.",
+  "analysis": {
+    "use_ai": true,
+    "time": 4.0,
+    "sample_rate": 44100,
+    "model_name": "knock_peak_detector",
+    "analysis_interval": 3.5
+  }
+}

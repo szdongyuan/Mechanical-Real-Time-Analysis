@@ -1,0 +1,20 @@
+{
+  "-notes": "Peak-detection parameters.",
+  "sampling_rate": 44100,
+  "channels": ["good_motor", "bad_motor"],
+  "stft": {
+    "window": "hann",
+    "frame_size": 1024,
+    "hop_size": 512
+  },
+  "bandpass_hz": [2000, 8000],
+  "energy_metric": "power_sum",
+  "flux": {
+    "method": "positive_diff",
+    "smooth_window": 5
+  },
+  "peak_detection": {
+    "zscore_threshold": 4.0
+  }
+}
+
