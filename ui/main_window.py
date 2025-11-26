@@ -5,9 +5,10 @@ import threading
 import time
 import multiprocessing as mp
 
+import librosa
+import sounddevice as sd
 import numpy as np
 from scipy.signal import spectrogram
-
 from PyQt5.QtCore import QTimer, Qt, QObject, pyqtSignal
 from PyQt5.QtWidgets import QMessageBox, QFileDialog
 
@@ -18,6 +19,7 @@ from base.indicator_engine import IndicatorEngine, PredictionItem
 from base.load_device_info import load_devices_data
 from base.sound_device_manager import get_default_device
 from base.log_manager import LogManager
+from base.player_audio import AudioPlayer
 from base.record_audio import AudioDataManager
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.data_struct.audio_segment_extractor import AudioSegmentExtractor
@@ -279,6 +281,12 @@ class MainWindowController:
         self._temp_dir = os.path.join(tempfile.gettempdir(), "audio_segments_tmp")
         os.makedirs(self._temp_dir, exist_ok=True)
         self._peak_threshold = 3.5
+        
+        # 报警音频播放器
+        self._alert_player: AudioPlayer = None
+        self._alert_audio_data = None
+        self._alert_sample_rate = 44100
+        self._load_alert_audio()
 
         # 指示灯引擎与定时器
         self._indicator_engine = IndicatorEngine(red_add_seconds=3.0)
@@ -491,6 +499,42 @@ class MainWindowController:
             self.model.set_audio_store_path(path)
             self.model.save_store_path_to_txt(path)
 
+    def _load_alert_audio(self):
+        """预加载报警音频文件，避免每次播放时重复加载"""
+        alert_audio_path = os.path.join(DEFAULT_DIR, "alert.wav")
+        if os.path.exists(alert_audio_path):
+            try:
+                self._alert_audio_data, self._alert_sample_rate = librosa.load(
+                    alert_audio_path, sr=None, mono=False
+                )
+                self.logger.info(f"已加载报警音频: {alert_audio_path}")
+            except Exception as exc:
+                self.logger.error(f"加载报警音频失败: {exc}")
+                self._alert_audio_data = None
+        else:
+            self.logger.warning(f"报警音频文件不存在: {alert_audio_path}")
+
+    def _play_alert_audio(self):
+        """在后台线程中播放报警音频，不阻塞主线程"""
+        if self._alert_audio_data is None:
+            return
+        # 如果正在播放，不重复触发
+        if self._alert_player is not None and self._alert_player.is_playing:
+            return
+        
+        def _play_in_thread():
+            try:
+                self._alert_player = AudioPlayer(
+                    self._alert_audio_data.T if self._alert_audio_data.ndim == 2 else self._alert_audio_data,
+                    sample_rate=self._alert_sample_rate
+                )
+                self._alert_player.start()
+            except Exception as exc:
+                self.logger.error(f"播放报警音频失败: {exc}")
+        
+        play_thread = threading.Thread(target=_play_in_thread, daemon=True)
+        play_thread.start()
+
     def _handle_segments_extracted(self, segments: np.ndarray, sampling_rate: int):
         if segments is None:
             return
@@ -573,6 +617,10 @@ class MainWindowController:
             points = self._parse_peak_results(results)
             if not points:
                 return
+            alert_flags = sum([1 for ch in points if ch.get("health_score") is not None and ch["health_score"] < 30])
+            if alert_flags > 0:
+                # 在后台线程播放报警音频
+                self._play_alert_audio()
             self._indicator_engine.process_predictions(
                 [PredictionItem(result=pt["status"]) for pt in points]
             )
