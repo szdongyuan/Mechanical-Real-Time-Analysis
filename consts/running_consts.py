@@ -4,6 +4,10 @@ import sys
 # DEFAULT_DIR = os.path.split(os.path.realpath(__file__))[0].replace("\\", "/") + "/../"
 DEFAULT_DIR = os.path.dirname(os.path.realpath(sys.argv[0])).replace("\\", "/") + "/"
 
+PEAK_DETECTION_SETTINGS_JSON = DEFAULT_DIR + "configs/ai_model_config/peak_detection_models.json"
+PEAK_DETECTION_CONFIG_JSON   = DEFAULT_DIR + "configs/ai_model_config/peak_detection_config.json"
+HEALTH_SCORE_CONFIG_JSON     = DEFAULT_DIR + "configs/ai_model_config/health_score_config.json"
+
 # basic consts
 KB = 1 << 10
 MB = 1 << 20

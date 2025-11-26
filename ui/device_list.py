@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime
 
-from PyQt5.QtCore import Qt, QItemSelectionModel
+from PyQt5.QtCore import Qt, QItemSelectionModel, pyqtSignal
 from PyQt5.QtGui import QStandardItem, QStandardItemModel, QPalette, QColor
 from PyQt5.QtWidgets import QApplication, QAbstractItemView, QWidget, QHBoxLayout, QLabel, QListView, QFrame
 from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QComboBox, QMessageBox
@@ -17,6 +17,7 @@ from ui.calibration_window import CalibrationWindow
 
 
 class DeviceListWindow(QWidget):
+    device_list_changed = pyqtSignal(object)
 
     def __init__(self):
         super().__init__()
@@ -353,6 +354,7 @@ class DeviceListWindow(QWidget):
             print("Error saving device data:", e)
 
     def on_click_ok_btn(self):
+        print("on_click_ok_btn")
         self.data_struct.channels_change_flag = True
         current_api = self.api_combo_box.currentText()
         index = self.api_info[current_api]["input"].index(self.selected_device)
