@@ -211,7 +211,6 @@ class WavOrSpectGraph(QWidget):
         if self.limit_config:
             spec_lower = self.limit_config.get("spec_lower", 0.0)
             spec_upper = self.limit_config.get("spec_upper", 1.0)
-            print(spec_lower, spec_upper)
             img_item.setLevels([spec_lower, spec_upper])
         else:
             # 默认范围 0 到 1

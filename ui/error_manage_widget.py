@@ -63,6 +63,8 @@ class ErrorManageWidget(QWidget):
 
     def create_error_manage_table_layout(self):
         self.error_manage_table.verticalHeader().setDefaultSectionSize(40)
+        # 隐藏左侧行号列，使其与背景色一致
+        self.error_manage_table.verticalHeader().setVisible(False)
         # 深色主题样式，与主界面风格统一
         self.error_manage_table.setStyleSheet(
             """QTableView {
