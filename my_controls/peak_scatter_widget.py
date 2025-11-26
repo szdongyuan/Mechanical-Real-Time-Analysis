@@ -202,57 +202,52 @@ class PeakScatterWidget(QWidget):
         self._plot.setRange(xRange=(-limit, limit), yRange=(-limit, limit), padding=0.02)
 
     @staticmethod
-    def _normalize_score(score: Optional[float]) -> Optional[float]:
+    def _normalize_score(score: Optional[float]) -> float:
+        """
+        将 health_score 归一化到 [0, 1] 范围。
+        - 输入 0-100 或 0-1 的分数
+        - 返回 0.0-1.0 的归一化值，None 默认返回 0.5
+        """
         if score is None:
-            return None
+            return 0.5  # 默认中等分数
         try:
             value = float(score)
         except Exception:
-            return None
+            return 0.5
+        # 如果值大于1，假设是0-100的范围
         if value > 1.0:
             value = value / 100.0
         return float(np.clip(value, 0.0, 1.0))
 
     def _sample_point(self, channel_name: str, status: str, health_score: Optional[float], ratio: float):
+        """
+        基于 health_score 计算极坐标位置和颜色严重度。
+        - health_score 接近 100：靠近中心，绿色 (severity=0)
+        - health_score 接近 0：远离中心，红色 (severity=1)
+        - 角度采用随机数
+        """
+        # 归一化分数到 [0, 1]
         score_norm = self._normalize_score(health_score)
-        is_good = str(channel_name or "").lower().endswith("good_motor")
-        if status == "OK":
-            angle = random.uniform(0, 2 * math.pi)
-            if is_good:
-                severity = min(max(1.0 - (score_norm or 1.0), 0.0), 1.0)
-                radius = (severity ** 1.8) * self._ok_radius * 0.85
-                radius += abs(np.random.normal(0.0, self._ok_radius * 0.04))
-                radius = min(radius, self._ok_radius * 0.85)
-                radius = max(radius, 0.02)
-            else:
-                edge_bias = 0.85 + random.random() * 0.1
-                radius = edge_bias * self._ok_radius
-                radius += abs(np.random.normal(0.0, self._ok_radius * 0.03))
-                radius = min(radius, self._ok_radius * 0.97)
-            return angle, radius, 0.0
-        base_vec = np.random.normal(loc=0.0, scale=1.0, size=2)
-        magnitude = np.linalg.norm(base_vec)
-        if magnitude == 0:
-            base_vec = np.array([1.0, 0.0])
-            magnitude = 1.0
-        base_vec /= magnitude
-        if score_norm is not None:
-            severity_dist = min(max((1.0 - score_norm) ** 1.2, 0.0), 1.0)
-        else:
-            severity_dist = min(max((ratio - 1.05) / 0.8, 0.0), 1.0)
-        severity_color = severity_dist
-        base = self._ok_radius * 1.1
-        span = max(1.2, self._max_radius - base)
-        radial_factor = severity_dist ** 0.85
-        scale = base + radial_factor * span
-        noise_scale = self._ok_radius * (0.18 + 0.3 * severity_dist)
-        noise = np.random.normal(scale=noise_scale, size=2)
-        point = base_vec * scale + noise
-        angle = math.atan2(point[1], point[0])
-        radius = math.hypot(point[0], point[1])
-        radius = min(self._max_radius, radius)
-        radius = max(radius, base)
-        return angle, radius, severity_color
+        
+        # 随机角度 [0, 2π]
+        angle = random.uniform(0, 2 * math.pi)
+        
+        # severity: 分数越高越接近0（绿色），分数越低越接近1（红色）
+        severity = 1.0 - score_norm
+        
+        # 半径计算：severity 越大，半径越大（远离中心）
+        # 使用非线性映射让分布更自然
+        # 最小半径 0.05（中心附近），最大半径 _max_radius
+        min_radius = 0.05
+        radial_factor = severity ** 0.8  # 非线性映射
+        radius = min_radius + radial_factor * (self._max_radius - min_radius)
+        
+        # 添加小随机扰动，避免点完全重叠
+        noise = np.random.normal(0.0, self._max_radius * 0.03)
+        radius = radius + abs(noise)
+        radius = np.clip(radius, min_radius, self._max_radius)
+        
+        return angle, radius, severity
 
     def _refresh_plot(self):
         if not self._history:
@@ -262,7 +257,7 @@ class PeakScatterWidget(QWidget):
         spots = []
         latest_batch = self._latest_batch_id
         base_size = 9
-        highlight_size = 15
+        highlight_size = 18
         max_index = self._history[-1]["index"]
         min_index = max(0, max_index - self.max_points + 1)
         used_radius = self._ok_radius
