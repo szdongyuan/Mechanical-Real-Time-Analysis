@@ -6,10 +6,9 @@ from typing import Deque, Dict, List, Optional, Union
 import numpy as np
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QLinearGradient, QPainter, QPixmap
-from PyQt5.QtWidgets import QLabel, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QLabel, QHBoxLayout, QVBoxLayout, QWidget, QGraphicsEllipseItem
 
 import pyqtgraph as pg
-from pyqtgraph import QtGui
 
 
 class PeakScatterWidget(QWidget):
@@ -53,7 +52,7 @@ class PeakScatterWidget(QWidget):
         self._plot.setRange(xRange=(-1.5, 1.5), yRange=(-1.5, 1.5), padding=0.02)
         self._scatter = pg.ScatterPlotItem()
         self._plot.addItem(self._scatter)
-        self._ok_zone = QtGui.QGraphicsEllipseItem()
+        self._ok_zone = QGraphicsEllipseItem()
         self._update_ok_zone()
         self._ok_zone.setBrush(pg.mkBrush(0, 180, 120, 35))
         self._ok_zone.setPen(pg.mkPen(pg.mkColor(120, 220, 180), width=1, style=Qt.DashLine))
@@ -295,7 +294,7 @@ class PeakScatterWidget(QWidget):
         limit = max(self._max_radius, used_radius + 0.15)
         self._plot.setRange(xRange=(-limit, limit), yRange=(-limit, limit), padding=0.02)
 
-    def _severity_to_color(self, severity: Optional[float]) -> QtGui.QColor:
+    def _severity_to_color(self, severity: Optional[float]) -> QColor:
         if severity is None:
             severity = 0.0
         val = float(np.clip(severity, 0.0, 1.0))
