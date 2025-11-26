@@ -6,9 +6,7 @@ from PyQt5.QtCore import Qt, QSize, QObject, pyqtSignal, QEvent, QTimer
 from PyQt5.QtGui import QStandardItemModel, QStandardItem,QIcon, QPalette, QColor
 from PyQt5.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QListView, QButtonGroup, QTextEdit
 
-from consts.running_consts import DEFAULT_DIR
 from my_controls.custom_label import CustomInfoLabel
-from my_controls.queue_widget import MessageQueueWidget
 from ui.machine_record_view.health_evaluate_widget import HealthEvaluateWidget
 
 

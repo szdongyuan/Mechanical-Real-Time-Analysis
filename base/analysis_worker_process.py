@@ -19,11 +19,12 @@ def analysis_worker(job_queue, result_queue):
         os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
     except Exception:
         pass
+    from base.peak_detection_runner import run_peak_detection
     try:
         import numpy as _np
         import os as _os
         import json as _json
-        from base.peak_detection_runner import run_peak_detection
+        
     except Exception as e:
         # 若初始化即失败，尝试将错误回传并退出
         try:
