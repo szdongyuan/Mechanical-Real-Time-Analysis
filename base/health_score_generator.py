@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple, List
 
 from base.load_config import load_config
-from consts import model_consts
+from consts.running_consts import HEALTH_SCORE_CONFIG_JSON
 
 
 class HealthScoreGenerator:
@@ -157,4 +157,4 @@ class HealthScoreGenerator:
             return Path(config_path)
         if config_path:
             return Path(config_path)
-        return Path(model_consts.HEALTH_SCORE_CONFIG_JSON)
+        return Path(HEALTH_SCORE_CONFIG_JSON)

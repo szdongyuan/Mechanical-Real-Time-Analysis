@@ -6,14 +6,15 @@ import numpy as np
 
 from base.knock_detection import KnockDetector
 from base.health_score_generator import HealthScoreGenerator
-from consts import error_code, model_consts
+from consts import error_code
+from consts.running_consts import PEAK_DETECTION_CONFIG_JSON
 
 
 def run_peak_detection(signals: List[np.ndarray],
                        file_names: List[str],
                        fs,
                        config_path: str | None = None) -> str:
-    cfg_path = config_path or os.path.normpath(model_consts.PEAK_DETECTION_CONFIG_JSON)
+    cfg_path = config_path or os.path.normpath(PEAK_DETECTION_CONFIG_JSON)
     try:
         with open(cfg_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
@@ -77,9 +78,5 @@ def run_peak_detection(signals: List[np.ndarray],
         "result": results,
         "health_scores": health_scores,
     }, ensure_ascii=False)
-    try:
-        print(result_json)
-    except Exception:
-        pass
     return result_json
 

@@ -2,12 +2,14 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 
-from PyQt5.QtCore import Qt, QSize, QObject, pyqtSignal, QEvent
+from PyQt5.QtCore import Qt, QSize, QObject, pyqtSignal, QEvent, QTimer
 from PyQt5.QtGui import QStandardItemModel, QStandardItem,QIcon, QPalette, QColor
 from PyQt5.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QListView, QButtonGroup, QTextEdit
 
 from consts.running_consts import DEFAULT_DIR
-from my_controls.custom_button import CustomInfoButton
+from my_controls.custom_label import CustomInfoLabel
+from my_controls.queue_widget import MessageQueueWidget
+from ui.machine_record_view.health_evaluate_widget import HealthEvaluateWidget
 
 
 @dataclass
@@ -74,17 +76,15 @@ class InformationBar(QWidget):
         self._nav_btn_group.setExclusive(True)
 
         self.information_level_widget = InformationLevelWidget()
-        self.text_edit = QTextEdit()
-        self.text_edit.setReadOnly(True)
-		# 深色主题：避免白底
-        self.text_edit.setStyleSheet("background: rgb(65,65,65); color: rgb(220,220,220); border: 1px solid rgb(70,70,70);")
         # 先完成字段初始化，再添加按钮项
+        # self.queue_widget = MessageQueueWidget()
+        self.health_evaluate_widget = HealthEvaluateWidget(3)
         self.add_item_to_nevigation_listview()
-
         self.initUI()
         # 监听 viewport 尺寸变化，动态让 text_edit 铺满剩余空间
         self.navition_listview.viewport().installEventFilter(self)
-        self._update_text_edit_row_height()
+        # self._update_text_edit_row_height()
+        self.init_health_evaluate_widget()
 
     def initUI(self):
         palette = self.palette()
@@ -117,11 +117,28 @@ class InformationBar(QWidget):
         # layout.addStretch()
         self.setLayout(layout)
 
+    def init_health_evaluate_widget(self):
+        self.health_evaluate_widget.set_label_text(0, "整体健康度: 0.0")
+        self.health_evaluate_widget.set_label_text(1, "通道 1 健康度: 0.0")
+        self.health_evaluate_widget.set_label_text(2, "通道 2 健康度: 0.0")
+
+    def write_score(self, results: list):
+        score_results = results[0].get("health_scores", {})
+        overall_score = score_results.get("overall", "0")
+        overall_score = str(overall_score)
+        self.health_evaluate_widget.set_label_text(0, "整体健康度: " + overall_score)
+
+        good_score = str(score_results.get("good_motor", "0"))
+        self.health_evaluate_widget.set_label_text(1, "通道 1 健康度: " + good_score)
+        bad_score = str(score_results.get("bad_motor", "0"))
+        self.health_evaluate_widget.set_label_text(2, "通道 2 健康度: " + bad_score)
+
     def add_item_to_nevigation_listview(self):
-        self.add_item(" 信息等级")
         self.add_widget_to_listview(self.information_level_widget)
-        self.add_item(" 系统信息")
-        self.add_widget_to_listview(self.text_edit)
+        self.add_widget_to_listview(self.health_evaluate_widget)
+        # 监听 health_evaluate_widget 的高度变化信号
+        self.health_evaluate_widget.height_changed.connect(self._on_health_widget_height_changed)
+        # self.add_widget_to_listview(self.queue_widget)
 
     def add_item(self, text:str, icon_url:str = None):
         item = NavigationBarItem(text, icon_url)
@@ -181,7 +198,7 @@ class InformationBar(QWidget):
         item = QStandardItem()
         item.setEditable(False)
         item.setSelectable(False)
-		# 若未指定高度，使用控件自身的 sizeHint，避免被压扁出现白条
+        # 若未指定高度，使用控件自身的 sizeHint，避免被压扁出现白条
         calculated_height = item_height if item_height is not None else max(36, widget.sizeHint().height())
         item.setSizeHint(QSize(0, calculated_height))
         if row is None:
@@ -196,80 +213,120 @@ class InformationBar(QWidget):
         self._widget_to_item[widget] = item
         return widget
 
-    def _update_text_edit_row_height(self):
-        """让 text_edit 这一行铺满剩余空间。"""
-        text_item = self._widget_to_item.get(self.text_edit)
-        if text_item is None:
+    def _on_health_widget_height_changed(self):
+        """
+        当 health_evaluate_widget 展开 / 折叠时，动态调整其在 QListView 中对应行的高度，
+        避免展开后显示不全。
+        """
+        item = self._widget_to_item.get(self.health_evaluate_widget)
+        if item is None:
             return
-        view_h = self.navition_listview.viewport().height()
-        if view_h <= 0:
-            return
-        model: QStandardItemModel = self.navition_listview.model()
-        other_h = 0
-        for r in range(model.rowCount()):
-            it = model.item(r)
-            if it is text_item:
-                continue
-            h = it.sizeHint().height()
-            if h <= 0:
-                h = 20
-            other_h += h
-        remaining = max(60, view_h - other_h - 6)
-        text_item.setSizeHint(QSize(0, remaining))
+
+        # 重新根据控件当前的 sizeHint 计算高度
+        new_height = max(36, self.health_evaluate_widget.sizeHint().height())
+        item.setSizeHint(QSize(0, new_height))
+
+        # 通知 QListView 重新布局
         self.navition_listview.updateGeometries()
         self.navition_listview.viewport().update()
 
-    def eventFilter(self, obj, event):
-        if obj is self.navition_listview.viewport() and event.type() == QEvent.Resize:
-            self._update_text_edit_row_height()
-        return super().eventFilter(obj, event)
+    # def _update_text_edit_row_height(self):
+    #     """让 text_edit 这一行铺满剩余空间。"""
+    #     text_item = self._widget_to_item.get(self.queue_widget)
+    #     if text_item is None:
+    #         return
+    #     view_h = self.navition_listview.viewport().height()
+    #     if view_h <= 0:
+    #         return
+    #     model: QStandardItemModel = self.navition_listview.model()
+    #     other_h = 0
+    #     for r in range(model.rowCount()):
+    #         it = model.item(r)
+    #         if it is text_item:
+    #             continue
+    #         h = it.sizeHint().height()
+    #         if h <= 0:
+    #             h = 20
+    #         other_h += h
+    #     remaining = max(60, view_h - other_h - 6)
+    #     text_item.setSizeHint(QSize(0, remaining))
+    #     self.navition_listview.updateGeometries()
+    #     self.navition_listview.viewport().update()
 
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        self._update_text_edit_row_height()
+    # def eventFilter(self, obj, event):
+    #     # if obj is self.navition_listview.viewport() and event.type() == QEvent.Resize:
+    #     #     self._update_text_edit_row_height()
+    #     return super().eventFilter(obj, event)
+
+    # def resizeEvent(self, e):
+    #     super().resizeEvent(e)
+    #     # self._update_text_edit_row_height()
 
 
 class InformationLevelWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.warning_btn = CustomInfoButton("警告：", "0", color="yellow")
-        self.error_btn = CustomInfoButton("错误：", "0", color="red")
-        self.info_btn = CustomInfoButton("通知：", "0", color="green")
-        self.all_btn = CustomInfoButton("全部：", "0", color="white")
-
-        # 互斥选择（参考 wav_or_spect_graph.py）
-        self._level_group = QButtonGroup(self)
-        self._level_group.setExclusive(True)
-        for btn in (self.error_btn, self.warning_btn, self.info_btn, self.all_btn):
-            btn.setCheckable(True)
-            # 未选：深灰；选中：高亮蓝
-            btn.setStyleSheet(
-                "QPushButton { background-color: rgb(55,55,55); color: rgb(255,255,255); border:none;border-radius: 6px; }"
-                "QPushButton:checked { background-color: rgb(24,144,255); }"
-            )
-            self._level_group.addButton(btn)
-        # 默认选中“全部”
-        self.all_btn.setChecked(True)
-
+        # self.evaluate_health = CustomInfoLabel("健康评估：", "0", color="green")
+        # self.warning_count = CustomInfoLabel("警 告 数：", "0", color="yellow")
+        self.average_spl = CustomInfoLabel("平均声压级：", "70.0 dB", color="green")
+        self.runing_time = CustomInfoLabel("运行时间：", "00:00:00", color="green")
+        
+        # 初始化运行时间计数器（秒）
+        self._elapsed_seconds = 0
+        
+        # 创建定时器，每秒更新一次
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._update_running_time)
+        self._timer.start(1000)  # 1000毫秒 = 1秒
+        
         self.init_ui()
 
     def init_ui(self):
-        self.setFixedSize(270, 150)
+        self.setFixedSize(270, 100)
 
-        h_layout_top = QHBoxLayout()
-        h_layout_top.addWidget(self.error_btn)
-        h_layout_top.addWidget(self.warning_btn)
+        # h_layout_top = QHBoxLayout()
+        # h_layout_top.addWidget(self.evaluate_health)
+        # h_layout_top.addWidget(self.warning_count)
+        
         h_layout_bottom = QHBoxLayout()
-        h_layout_bottom.addWidget(self.info_btn)
-        h_layout_bottom.addWidget(self.all_btn)
+        h_layout_bottom.addWidget(self.average_spl)
+        h_layout_bottom.addWidget(self.runing_time)
         v_layout = QVBoxLayout()
-        v_layout.addLayout(h_layout_top)
+        # v_layout.addLayout(h_layout_top)
         v_layout.addLayout(h_layout_bottom)
         self.setLayout(v_layout)
 
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet("background-color: rgb(45,45,45); border-radius: 6px;")
+    
+    def _update_running_time(self):
+        """每秒更新一次运行时间"""
+        self._elapsed_seconds += 1
+        
+        # 计算时分秒
+        hours = self._elapsed_seconds // 3600
+        minutes = (self._elapsed_seconds % 3600) // 60
+        seconds = self._elapsed_seconds % 60
+        
+        # 格式化为 HH:MM:SS
+        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        # 更新显示
+        self.runing_time.set_second_line(time_str)
+    
+    def reset_timer(self):
+        """重置计时器"""
+        self._elapsed_seconds = 0
+        self.runing_time.set_second_line("00:00:00")
+    
+    def stop_timer(self):
+        """停止计时器"""
+        self._timer.stop()
+    
+    def start_timer(self):
+        """启动计时器"""
+        self._timer.start(1000)
 
 class NavigationBarItem(QStandardItem):
     def __init__(self, text:str, icon_url:str = None):

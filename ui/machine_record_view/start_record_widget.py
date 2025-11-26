@@ -17,7 +17,6 @@ class StartRecordWidget(QWidget):
         self.record_btn = QPushButton("启  动")
         self.stop_btn = QPushButton("停  止")
         self.audio_store_path_lineedit = QLineEdit()
-        self.about_dy_btn = QPushButton()
         self.select_store_path_action = None
         self.peak_scatter = PeakScatterWidget()
 
@@ -27,14 +26,12 @@ class StartRecordWidget(QWidget):
         # 设置对象名，便于样式区分
         self.record_btn.setObjectName("record_btn")
         self.stop_btn.setObjectName("stop_btn")
-        self.about_dy_btn.setObjectName("about_dy_btn")
         # 未开始录制时禁止点击 Stop
         self.stop_btn.setEnabled(False)
 
         # 事件连接：点击 Record 进入选中（高亮绿），点击 Stop 取消
         self.record_btn.clicked.connect(self._on_record_clicked)
         self.stop_btn.clicked.connect(self._on_stop_clicked)
-        self.about_dy_btn.clicked.connect(self._on_about_dy_clicked)
         self.init_ui()
 
     def init_ui(self):
@@ -54,7 +51,6 @@ class StartRecordWidget(QWidget):
         btn_layout.addWidget(self.record_btn)
         btn_layout.addWidget(self.stop_btn)
         btn_layout.addWidget(self.audio_store_path_lineedit)
-        btn_layout.addWidget(self.about_dy_btn)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -155,11 +151,7 @@ class StartRecordWidget(QWidget):
         self.stop_btn.setEnabled(False)
         # 其他按钮保持默认
         self.record_btn.setEnabled(True)
-
-    @staticmethod
-    def _on_about_dy_clicked():
-        browser = QDesktopServices()
-        browser.openUrl(QUrl("https://suzhoudongyuan.com/"))
+        
 
     # 外部接口 -----------------------------------------------------------------
     def set_peak_channels(self, channels):
