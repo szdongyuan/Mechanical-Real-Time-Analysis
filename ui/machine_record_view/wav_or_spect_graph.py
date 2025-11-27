@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap, QPalette, QColor
+from PyQt5.QtGui import QPixmap, QPalette, QColor, QFont
 from PyQt5.QtWidgets import QLayout, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QFrame, QButtonGroup, QPushButton
 from pyqtgraph import PlotWidget, ImageItem, ColorMap
 import pyqtgraph as pg
@@ -54,6 +54,7 @@ class WavOrSpectGraph(QWidget):
             QPushButton {
                 background-color: rgb(70, 70, 70);
                 color: rgb(255, 255, 255);
+                font-size: 14px;
                 border: none;
                 border-radius: 5px;
                 padding: 5px 10px;
@@ -63,6 +64,7 @@ class WavOrSpectGraph(QWidget):
             }
             QLabel {
                 color: rgb(255, 255, 255);
+                font-size: 14px;
             }
         """)
 
@@ -85,10 +87,25 @@ class WavOrSpectGraph(QWidget):
         spect_label_right = QLabel()
         waveform_graph_left = PlotWidget()
         waveform_graph_right = PlotWidget()
+
+        font = QFont()
+        font.setPixelSize(12)
+        
+        for graph in [waveform_graph_left, waveform_graph_right]:
+            graph.getAxis('bottom').setStyle(tickFont=font)
+            graph.getAxis('left').setStyle(tickFont=font)
+            graph.getAxis('bottom').label.setFont(font)
+            graph.getAxis('left').label.setFont(font)
+
         waveform_graph_left.setYRange(self.limit_config["lower"], self.limit_config["upper"])
         waveform_graph_right.setYRange(self.limit_config["lower"], self.limit_config["upper"])
         spect_graph_left = PlotWidget()
         spect_graph_right = PlotWidget()
+        for graph in [spect_graph_left, spect_graph_right]:
+            graph.getAxis('bottom').setStyle(tickFont=font)
+            graph.getAxis('left').setStyle(tickFont=font)
+            graph.getAxis('bottom').label.setFont(font)
+            graph.getAxis('left').label.setFont(font)
         self.chart_wav_graph_widgets.append(waveform_graph_left)
         self.chart_wav_graph_widgets.append(waveform_graph_right)
         self.chart_spect_graph_widgets.append(spect_graph_left)

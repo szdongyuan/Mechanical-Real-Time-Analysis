@@ -100,6 +100,8 @@ class MainWindowMode:
                         self.selected_channels,
                     )
             except Exception:
+                QMessageBox.information("通知", "设置采集设备失败，已使用默认设备")
+                change_default_mic(0)
                 self.select_device_name = "Default Microphone"
                 self.channels = 1
                 self.selected_channels = [0]
@@ -320,6 +322,19 @@ class MainWindowController:
         self.view.select_store_path_action.triggered.connect(self.select_store_path)
         self.model.auto_save_count.signal_for_update.connect(self.save_audio_data)
         self.model.auto_write_timer.timeout.connect(self.work_function)
+        self.view.device_list_window.device_list_changed.connect(self.change_device)
+
+    def change_device(self):
+        self.model.page_index = 0
+        self.model.load_device_info()
+        self.model.set_up_audio_store_zero()
+        self.change_waveform_title()
+        self.view.hide_right_part_widget(len(self.model.selected_channels) == 1)
+        self.view.prev_page.setEnabled(False)
+        if len(self.model.selected_channels) > 2:
+            self.view.next_page.setEnabled(True)
+        else:
+            self.view.next_page.setEnabled(False)
 
     def prev_page(self):
         if self.model.page_index > 0:
@@ -346,7 +361,8 @@ class MainWindowController:
             if self.view.next_page.isEnabled():
                 self.view.next_page.setEnabled(False)
 
-        if self.model.page_index == (len(self.model.selected_channels)) // 2 - 1:
+        print(self.model.page_index, (len(self.model.selected_channels) + 1) // 2 - 1)
+        if self.model.page_index == (len(self.model.selected_channels) + 1) // 2 - 1:
             self.view.next_page.setEnabled(False)
 
     def record_audio(self):
@@ -879,14 +895,3 @@ def open_main_window():
     view.setWindowState(view.windowState() | Qt.WindowMaximized)
 
     return view
-
-if __name__ == "__main__":
-    import sys
-    from PyQt5.QtWidgets import QApplication
-    app = QApplication(sys.argv)
-    view = open_main_window()
-    # model = MainWindowMode()
-    # view = CenterWidget()
-    # main_window_controller = MainWindowController(model, view)
-    view.showMaximized()  # 最大化显示窗口
-    sys.exit(app.exec_())
