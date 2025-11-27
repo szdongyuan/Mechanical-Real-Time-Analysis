@@ -93,7 +93,7 @@ class StartRecordWidget(QWidget):
             try:
                 show_solid_window = ShowSolidWindow(step_path)
                 solid_widget = show_solid_window.get_widget()
-                solid_widget.setMinimumSize(550, 350)
+                solid_widget.setMinimumSize(550, 150)
                 solid_widget.setMaximumSize(700, 410)
                 step_widget = solid_widget
             except Exception as exc:
