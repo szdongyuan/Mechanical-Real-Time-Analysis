@@ -18,6 +18,8 @@ class WavOrSpectGraph(QWidget):
         self.limit_config = None
         self.prev_page = QPushButton("上一页")
         self.next_page = QPushButton("下一页")
+        self.next_page.setFixedWidth(150)
+        self.prev_page.setFixedWidth(150)
 
         self.channels = 0
         self.chart_wav_graph_widgets:list[PlotWidget] = []

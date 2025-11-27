@@ -277,6 +277,7 @@ class MainWindowController:
         self._analysis_running = False
         self._analysis_listener_thread = None
         self._analysis_starting = False
+        self.is_hide_graph = False
         self._analysis_signal = AnalysisSignalEmitter()
         self._analysis_signal.analysis_completed.connect(self._handle_analysis_results)
         self._analysis_signal.analysis_completed.connect(self.view.information_bar.write_score)
@@ -337,6 +338,10 @@ class MainWindowController:
             self.view.next_page.setEnabled(False)
 
     def prev_page(self):
+        if self.is_hide_graph:
+            self.is_hide_graph = False
+            self.view.hide_right_part_widget(False)
+
         if self.model.page_index > 0:
             self.model.page_index -= 1
             # self.view.create_chart_graph(len(self.model.selected_channels))
@@ -356,14 +361,16 @@ class MainWindowController:
                 self.view.prev_page.setEnabled(True)
             self.model.page_index += 1
             # self.view.create_chart_graph(len(self.model.selected_channels) - 2)
+            if self.model.page_index == (len(self.model.selected_channels) + 1) // 2 - 1:
+                if (len(self.model.selected_channels) - self.model.page_index * 2) == 1:
+                    self.is_hide_graph = True
+                    self.view.hide_right_part_widget(True)
+                self.view.next_page.setEnabled(False)
             self.change_waveform_title()
         else:
             if self.view.next_page.isEnabled():
                 self.view.next_page.setEnabled(False)
 
-        print(self.model.page_index, (len(self.model.selected_channels) + 1) // 2 - 1)
-        if self.model.page_index == (len(self.model.selected_channels) + 1) // 2 - 1:
-            self.view.next_page.setEnabled(False)
 
     def record_audio(self):
         if not self.view.audio_store_path_lineedit.text():
@@ -432,7 +439,7 @@ class MainWindowController:
             if len(self.model.selected_channels) - self.model.page_index * 2 > 1:
                 self.view.set_waveform_title([self.model.page_index * 2 + 1, self.model.page_index * 2 + 2])
             else:
-                self.view.set_waveform_title([self.model.page_index * 2])
+                self.view.set_waveform_title([self.model.page_index * 2 + 1])
 
     def _init_peak_scatter_channels(self):
         channels = []
@@ -833,7 +840,11 @@ class MainWindowController:
         if len(self.model.selected_channels) > 1:
             wavefrom_data: list = list()
             spect_data: list = list()
-            for i in range(2):
+            if self.is_hide_graph:
+                range_num = 1
+            else:
+                range_num = 2
+            for i in range(range_num):
                 channel_idx = self.model.page_index * 2 + i
                 buf = self.model.data_struct.audio_data[channel_idx]
                 pps = self.model.plot_points_section
@@ -866,13 +877,11 @@ class MainWindowController:
                 np_sxx_log = (sxx_log / max_val).T if max_val != 0 else sxx_log.T
                 spect_data.append((freqs, times_arr, np_sxx_log))
             
-            # 绘制波形图
             self.view.wav_or_spect_graph.plot_waveform(wavefrom_data[0], "left", self.model.sampling_rate)
-            self.view.wav_or_spect_graph.plot_waveform(wavefrom_data[1], "right", self.model.sampling_rate)
-            
-            # 绘制时频图
             self.view.wav_or_spect_graph.plot_spectrogram(spect_data[0], "left")
-            self.view.wav_or_spect_graph.plot_spectrogram(spect_data[1], "right")
+            if not self.is_hide_graph:
+                self.view.wav_or_spect_graph.plot_waveform(wavefrom_data[1], "right", self.model.sampling_rate)
+                self.view.wav_or_spect_graph.plot_spectrogram(spect_data[1], "right")
 
 
 class AnalysisSignalEmitter(QObject):
