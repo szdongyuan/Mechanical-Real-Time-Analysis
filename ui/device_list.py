@@ -42,13 +42,13 @@ class DeviceListWindow(QWidget):
         self.setAutoFillBackground(True)
         self.setPalette(palette)
 
-        # 应用深色主题样式
-        self._apply_dark_theme()
-
         api_layout = self.create_api_layout()
         device_list_layout = self.create_device_list_layout()
         channel_layout = self.create_channel_list_layout()
         btn_layout = self.create_btn_layout()
+
+        # 应用深色主题样式
+        self._apply_dark_theme()
 
         device_layout = QHBoxLayout()
         device_layout.addLayout(device_list_layout)
@@ -368,6 +368,7 @@ class DeviceListWindow(QWidget):
             current_api,
             mic_index
         )
+        self.device_list_changed.emit(0)
         # log_controller.info(f"选择硬件{self.selected_device['name']}")
 
     def on_click_cancel_btn(self):

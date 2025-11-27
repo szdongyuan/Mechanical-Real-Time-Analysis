@@ -5,7 +5,7 @@ from typing import Deque, Dict, List, Optional, Union
 
 import numpy as np
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QLinearGradient, QPainter, QPixmap
+from PyQt5.QtGui import QColor, QLinearGradient, QPainter, QPixmap, QFont
 from PyQt5.QtWidgets import QLabel, QHBoxLayout, QVBoxLayout, QWidget, QGraphicsEllipseItem
 
 import pyqtgraph as pg
@@ -77,7 +77,7 @@ class PeakScatterWidget(QWidget):
         self._colorbar_label.setToolTip("颜色越接近红色表示评分越差/越异常")
         self._colorbar_caption = QLabel("健康/异常")
         self._colorbar_caption.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
-        self._colorbar_caption.setStyleSheet("color: rgb(220,220,220); font-size: 10px;")
+        self._colorbar_caption.setStyleSheet("color: rgb(220,220,220); font-size: 12px;")
         self._refresh_colorbar_pixmap()
 
         layout = QHBoxLayout(self)
@@ -89,8 +89,18 @@ class PeakScatterWidget(QWidget):
         bar_layout.addWidget(self._colorbar_label, 0, Qt.AlignHCenter)
         bar_layout.addStretch(1)
         layout.addLayout(bar_layout)
+        self.set_plot_font_size()
 
     # ------------------------------------------------------------------ #
+    def set_plot_font_size(self):
+        font = QFont()
+        font.setPixelSize(12)
+        
+        self._plot.getAxis('bottom').setStyle(tickFont=font)
+        self._plot.getAxis('left').setStyle(tickFont=font)
+        self._plot.getAxis('bottom').label.setFont(font)
+        self._plot.getAxis('left').label.setFont(font)
+        
     def set_channels(self, channels: List[Union[str, int]]):
         """
         设置通道名称，用于固定符号映射。

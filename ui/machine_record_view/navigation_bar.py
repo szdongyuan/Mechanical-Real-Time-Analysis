@@ -55,9 +55,10 @@ class NavigationBar(QWidget):
                 color:rgb(255, 255, 255);
                 background-color:rgb(45, 45, 45);
                 padding-top: 10px;
-                font-size: 15px;}
+                font-size: 14px;
+            }
         """)
-        self.swap_size_btn.setStyleSheet("border:none; color:rgb(204,204,204);")
+        self.swap_size_btn.setStyleSheet("border:none; color:rgb(204,204,204);font-size: 14px;")
         # btn_layout = QHBoxLayout()
         # btn_layout.addWidget(self.swap_size_btn, alignment=Qt.AlignRight)
         layout.addWidget(self.swap_size_btn, stretch=0, alignment=Qt.AlignRight)

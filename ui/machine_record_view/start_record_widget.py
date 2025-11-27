@@ -56,7 +56,7 @@ class StartRecordWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(btn_layout)
         layout.addWidget(h_frame)
-        layout.addWidget(self._create_solid_graph(), alignment=Qt.AlignCenter)
+        layout.addWidget(self._create_solid_graph())
         self.setLayout(layout)
 
         self.set_widget_style()
@@ -67,6 +67,7 @@ class StartRecordWidget(QWidget):
                 background-color: rgb(70, 70, 70);
                 color: rgb(255, 255, 255);
                 border: none;
+                font-size: 14px;
                 border-radius: 4px;
                 padding: 6px 12px;
             }
@@ -81,7 +82,7 @@ class StartRecordWidget(QWidget):
     def _create_solid_graph(self):
         # 创建容器 widget 并设置背景色
         container = QWidget()
-        container.setStyleSheet("background-color: rgb(25, 25, 25);")
+        container.setStyleSheet("background-color: transparent;")
 
         # 默认展示 3D 模型；若加载失败则回退到占位文本
         step_widget = QLabel("STEP 模型未加载")
@@ -97,19 +98,12 @@ class StartRecordWidget(QWidget):
                 step_widget = solid_widget
             except Exception as exc:
                 step_widget.setText(f"STEP 模型加载失败: {exc}")
-        
-        # 创建图片标签
-        # solid_graph = QLabel()
-        # # solid_graph.setPixmap(QPixmap(DEFAULT_DIR + "ui/ui_pic/solid_graph.png"))
-        # solid_graph.setPixmap(QPixmap(DEFAULT_DIR + "ui/ui_pic/sequence_pic/dianji.png"))
-        # solid_graph.setMaximumSize(700, 410)
-        # solid_graph.setScaledContents(True)
-        # solid_graph.setAlignment(Qt.AlignCenter)
 
         # 将图片放入容器布局
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(step_widget, 1)  # 添加拉伸因子
+        layout.addSpacing(10)
         layout.addWidget(self.peak_scatter, 1)   # 添加拉伸因子
         
         return container
@@ -123,6 +117,7 @@ class StartRecordWidget(QWidget):
                 color: rgb(225, 225, 225);
                 background-color: rgb(70, 70, 70);
                 border: 1px solid rgb(70, 70, 70);
+                font-size: 14px;
             }
         """)
         icon_path = DEFAULT_DIR + "ui/ui_pic/ai_window_pic/folder-s.png"
