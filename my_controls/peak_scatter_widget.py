@@ -43,22 +43,27 @@ class PeakScatterWidget(QWidget):
         self._max_radius = float(max_radius)
 
         self._plot = pg.PlotWidget(background="#1b1b1b")
-        self._plot.showGrid(x=True, y=True, alpha=0.12)
-        self._plot.setLabel("bottom", "X")
-        self._plot.setLabel("left", "Y")
+        self._plot.showGrid(x=False, y=False)  # 禁用笛卡尔网格
+        self._plot.hideAxis("bottom")
+        self._plot.hideAxis("left")
         self._plot.setMouseEnabled(x=False, y=False)
         self._plot.setMenuEnabled(False)
         self._plot.setAspectLocked(True, ratio=1)
         self._plot.setRange(xRange=(-1.5, 1.5), yRange=(-1.5, 1.5), padding=0.02)
+        
+        # 绘制极坐标网格（同心圆和放射线）
+        self._polar_grid_items = []
+        self._draw_polar_grid()
+        
         self._scatter = pg.ScatterPlotItem()
         self._plot.addItem(self._scatter)
+        
+        # OK 安全区（中心绿色圆）
         self._ok_zone = QGraphicsEllipseItem()
         self._update_ok_zone()
         self._ok_zone.setBrush(pg.mkBrush(0, 180, 120, 35))
-        self._ok_zone.setPen(pg.mkPen(pg.mkColor(120, 220, 180), width=1, style=Qt.DashLine))
+        self._ok_zone.setPen(pg.mkPen(pg.mkColor(120, 220, 180), width=2, style=Qt.SolidLine))
         self._plot.addItem(self._ok_zone)
-        self._plot.addLine(x=0, pen=pg.mkPen("#666666"))
-        self._plot.addLine(y=0, pen=pg.mkPen("#666666"))
 
         # 颜色映射：均衡分布，OK=绿色，NG从黄色开始
         # OK 点 severity=0 显示绿色，NG 点 severity>=0.25 从黄色开始
@@ -102,6 +107,53 @@ class PeakScatterWidget(QWidget):
         self.set_plot_font_size()
 
     # ------------------------------------------------------------------ #
+    def _draw_polar_grid(self):
+        """
+        绘制极坐标网格：同心圆 + 放射线
+        """
+        # 清除旧的网格项
+        for item in self._polar_grid_items:
+            self._plot.removeItem(item)
+        self._polar_grid_items.clear()
+        
+        grid_pen = pg.mkPen(color=(100, 100, 100, 80), width=1)
+        radial_pen = pg.mkPen(color=(80, 80, 80, 60), width=1)
+        
+        # 绘制同心圆（半径刻度）
+        radii = [0.3, 0.6, 0.9, 1.2, 1.5]
+        for r in radii:
+            if r <= 0:
+                continue
+            circle = QGraphicsEllipseItem(-r, -r, r * 2, r * 2)
+            circle.setPen(grid_pen)
+            circle.setBrush(pg.mkBrush(None))
+            self._plot.addItem(circle)
+            self._polar_grid_items.append(circle)
+        
+        # 绘制放射线（角度刻度，每45度一条）
+        num_radials = 8
+        for i in range(num_radials):
+            angle = i * (2 * math.pi / num_radials)
+            x_end = self._max_radius * math.cos(angle)
+            y_end = self._max_radius * math.sin(angle)
+            line = pg.PlotDataItem(
+                [0, x_end], [0, y_end],
+                pen=radial_pen
+            )
+            self._plot.addItem(line)
+            self._polar_grid_items.append(line)
+        
+        # 添加中心点标记
+        center_marker = pg.ScatterPlotItem(
+            [0], [0],
+            symbol='o',
+            size=8,
+            brush=pg.mkBrush(30, 150, 85, 200),
+            pen=pg.mkPen(120, 220, 180, width=1)
+        )
+        self._plot.addItem(center_marker)
+        self._polar_grid_items.append(center_marker)
+    
     def set_plot_font_size(self):
         font = QFont()
         font.setPixelSize(12)
@@ -218,6 +270,7 @@ class PeakScatterWidget(QWidget):
     def set_max_radius(self, radius: float):
         self._max_radius = max(self._ok_radius + 0.1, float(radius))
         self._update_ok_zone()
+        self._draw_polar_grid()  # 重绘极坐标网格
         limit = max(self._max_radius, 1.0)
         self._plot.setRange(xRange=(-limit, limit), yRange=(-limit, limit), padding=0.02)
 
