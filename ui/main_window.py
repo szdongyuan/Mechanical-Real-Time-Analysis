@@ -321,7 +321,7 @@ class MainWindowController:
         self.view.record_btn.clicked.connect(self.record_audio)
         self.view.stop_btn.clicked.connect(self.stop_record)
         self.view.select_store_path_action.triggered.connect(self.select_store_path)
-        self.model.auto_save_count.signal_for_update.connect(self.save_audio_data)
+        # self.model.auto_save_count.signal_for_update.connect(self.save_audio_data)
         self.model.auto_write_timer.timeout.connect(self.work_function)
         self.view.device_list_window.device_list_changed.connect(self.change_device)
 
