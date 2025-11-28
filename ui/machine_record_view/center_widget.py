@@ -1,10 +1,12 @@
 from operator import contains
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFrame
 
 from ui.device_list import DeviceListWindow
 from ui.historical_data import HistoryDataWindow
 from ui.error_manage_widget import ErrorManageWidget
+from consts.running_consts import DEFAULT_DIR
 from ui.machine_record_view.information_bar import InformationBar
 from ui.machine_record_view.navigation_bar import NavigationBar
 from ui.machine_record_view.start_record_widget import StartRecordWidget
@@ -42,6 +44,8 @@ class CenterWidget(QWidget):
         self.init_ui()
 
     def init_ui(self):
+        self.setWindowTitle("设备健康状态监测")
+        self.setWindowIcon(QIcon(DEFAULT_DIR + "ui/ui_pic/sys_ico/icon.ico"))
         # 创建水平分割线，去掉 FrameShape 设置，直接用样式控制
         h_frame = QFrame()
         h_frame.setFixedHeight(1)  # 设置高度为1像素

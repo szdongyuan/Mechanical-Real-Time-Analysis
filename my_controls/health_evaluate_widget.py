@@ -1,5 +1,5 @@
 from PyQt5.QtCore import Qt, QSize, pyqtSignal
-from PyQt5.QtGui import QIcon, QPalette, QColor, QFont
+from PyQt5.QtGui import QIcon, QPalette, QColor
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QLabel
 from consts.running_consts import DEFAULT_DIR
 
@@ -22,7 +22,7 @@ class HealthEvaluateWidget(QWidget):
         super().__init__(parent)
         
         self._label_count = label_count
-        self._is_expanded = False
+        self._is_expanded = True
         self._labels = []
         
         # 图标路径
@@ -41,8 +41,8 @@ class HealthEvaluateWidget(QWidget):
         self._separator_frame = QFrame()
         self._separator_frame.setFrameShape(QFrame.HLine)
         self._separator_frame.setFixedHeight(1)
-        self._separator_frame.setStyleSheet("background-color: rgb(70, 70, 70); border: none;")
-        self._separator_frame.hide()
+        self._separator_frame.setStyleSheet("background-color: rgb(100,100,100); border: none;")
+        # self._separator_frame.hide()
         
         self._init_labels()
         self._init_ui()
@@ -51,28 +51,58 @@ class HealthEvaluateWidget(QWidget):
         """初始化标签列表"""
         self._labels.clear()
         for i in range(self._label_count):
-            # 创建单行文本标签
-            label = QLabel(f"评估项 {i + 1}: 0")
-            label.setStyleSheet("""
-                QLabel {
-                    background-color: rgb(55, 55, 55);
-                    color: rgb(255, 255, 255);
+            # 创建容器widget包含左右两个标签
+            container = QWidget()
+            container.setStyleSheet("""
+                QWidget {
+                    background-color: rgb(45, 45, 45);
                     border: none;
                     border-radius: 6px;
-                    padding: 8px 12px;
+                }
+            """)
+            container.setMinimumHeight(36)
+            
+            # 创建水平布局
+            h_layout = QHBoxLayout(container)
+            h_layout.setContentsMargins(12, 8, 12, 8)
+            h_layout.setSpacing(8)
+            
+            # 左侧标签（名称）
+            name_label = QLabel(f"评估项 {i + 1}")
+            name_label.setStyleSheet("""
+                QLabel {
+                    background-color: transparent;
+                    color: rgb(200, 200, 200);
+                    border: none;
                     font-size: 14px;
                 }
             """)
-            label.setMinimumHeight(36)
-            self._labels.append(label)
+            
+            # 右侧标签（值）
+            value_label = QLabel("0")
+            value_label.setStyleSheet("""
+                QLabel {
+                    background-color: transparent;
+                    color: rgb(255, 255, 255);
+                    border: none;
+                    font-size: 14px;
+                }
+            """)
+            value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            
+            # 添加到布局
+            h_layout.addWidget(name_label)
+            h_layout.addStretch()  # 中间空白区域
+            h_layout.addWidget(value_label)
+            
+            # 存储容器和两个标签的引用
+            container.name_label = name_label
+            container.value_label = value_label
+            
+            self._labels.append(container)
     
     def _init_ui(self):
         """初始化UI布局"""
-        # 设置背景色
-        palette = self.palette()
-        palette.setColor(QPalette.Window, QColor(45, 45, 45))
-        self.setAutoFillBackground(True)
-        self.setPalette(palette)
         
         # 主布局
         main_layout = QVBoxLayout()
@@ -103,7 +133,6 @@ class HealthEvaluateWidget(QWidget):
             self._other_labels_layout.addWidget(self._labels[i])
         
         self._other_labels_widget.setLayout(self._other_labels_layout)
-        self._other_labels_widget.hide()
         
         main_layout.addWidget(self._other_labels_widget)
         main_layout.addStretch()
@@ -119,13 +148,6 @@ class HealthEvaluateWidget(QWidget):
             QPushButton:hover {
                 background-color: rgb(55, 55, 55);
                 border-radius: 4px;
-            }
-        """)
-        
-        self.setStyleSheet("""
-            QWidget {
-                background-color: transparent;
-                border-radius: 6px;
             }
         """)
     
@@ -179,29 +201,85 @@ class HealthEvaluateWidget(QWidget):
         for i in range(1, len(self._labels)):
             self._other_labels_layout.addWidget(self._labels[i])
     
-    def set_label_text(self, index: int, text: str):
-        """设置指定索引标签的文本"""
+    def set_label_text(self, index: int, name: str = None, value: str = None):
+        """设置指定索引标签的文本
+        
+        Args:
+            index: 标签索引
+            name: 左侧名称文本（可选）
+            value: 右侧值文本（可选）
+        """
         if 0 <= index < len(self._labels):
-            # 确保转换为字符串
-            if isinstance(text, (int, float)):
-                text = str(text)
-            self._labels[index].setText(text)
+            container = self._labels[index]
+            
+            if name is not None:
+                # 确保转换为字符串
+                if isinstance(name, (int, float)):
+                    name = str(name)
+                container.name_label.setText(name)
+            
+            if value is not None:
+                # 确保转换为字符串
+                if isinstance(value, (int, float)):
+                    value = str(value)
+                container.value_label.setText(value)
     
-    def get_label(self, index: int) -> QLabel:
-        """获取指定索引的标签对象（用于直接操作）"""
+    def get_label(self, index: int) -> QWidget:
+        """获取指定索引的标签容器对象（用于直接操作）
+        
+        返回的容器有 name_label 和 value_label 两个属性
+        """
         if 0 <= index < len(self._labels):
             return self._labels[index]
         return None
     
+    def get_name_label(self, index: int) -> QLabel:
+        """获取指定索引的名称标签"""
+        if 0 <= index < len(self._labels):
+            return self._labels[index].name_label
+        return None
+    
+    def get_value_label(self, index: int) -> QLabel:
+        """获取指定索引的值标签"""
+        if 0 <= index < len(self._labels):
+            return self._labels[index].value_label
+        return None
+    
+    def set_value(self, index: int, value: str):
+        """设置指定索引标签的右侧值
+        
+        Args:
+            index: 标签索引
+            value: 右侧值文本
+        """
+        if 0 <= index < len(self._labels):
+            # 确保转换为字符串
+            if isinstance(value, (int, float)):
+                value = str(value)
+            self._labels[index].value_label.setText(value)
+    
+    def set_name(self, index: int, name: str):
+        """设置指定索引标签的左侧名称
+        
+        Args:
+            index: 标签索引
+            name: 左侧名称文本
+        """
+        if 0 <= index < len(self._labels):
+            # 确保转换为字符串
+            if isinstance(name, (int, float)):
+                name = str(name)
+            self._labels[index].name_label.setText(name)
+    
     def expand(self):
         """展开"""
-        if not self._is_expanded:
-            self._toggle_expand()
+        self._is_expanded = False
+        self._toggle_expand()
     
     def collapse(self):
         """折叠"""
-        if self._is_expanded:
-            self._toggle_expand()
+        self._is_expanded = True
+        self._toggle_expand()
     
     def is_expanded(self) -> bool:
         """返回当前是否展开"""
@@ -217,7 +295,7 @@ if __name__ == "__main__":
     # 创建测试窗口
     window = QWidget()
     window.setWindowTitle("HealthEvaluateWidget Demo")
-    window.setStyleSheet("background-color: rgb(30, 30, 30);")
+    # window.setStyleSheet("background-color: rgb(30, 30, 30);")
     
     layout = QVBoxLayout(window)
     layout.setContentsMargins(20, 20, 20, 20)
@@ -228,16 +306,18 @@ if __name__ == "__main__":
     health_widget.setMinimumWidth(250)
     
     # 设置标签内容
-    health_widget.set_label_text(0, "整体健康度: 85.5")
-    health_widget.set_label_text(1, "振动评估: 78.2")
-    health_widget.set_label_text(2, "声压评估: 92.1")
-    health_widget.set_label_text(3, "温度评估: 88.0")
+    health_widget.set_label_text(0, name="整体健康度", value="85.5")
+    health_widget.set_label_text(1, name="振动评估", value="78.2")
+    health_widget.set_label_text(2, name="声压评估", value="92.1")
+    health_widget.set_label_text(3, name="温度评估", value="88.0")
     
     layout.addWidget(health_widget)
     layout.addStretch()
     
     window.resize(300, 500)
     window.show()
+    # health_widget.show()
+
     
     sys.exit(app.exec_())
 
