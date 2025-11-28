@@ -202,7 +202,7 @@ class ChannelCheck(QWidget):
         sensor_type = ["声压传感器", "震动传感器"]
         for i in range(channel):
             h_layout = QHBoxLayout()
-            h_layout.addWidget(QLabel(f"通道{i + 1}： {sensor_type[i%2]}"))
+            h_layout.addWidget(QLabel(f"通道{i + 1}： {sensor_type[int(i<2)]}"))
             h_layout.addStretch()
 
             channel_result_label = QLabel()

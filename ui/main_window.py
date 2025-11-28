@@ -641,6 +641,7 @@ class MainWindowController:
             if not points:
                 return
             alert_flags = sum([1 for ch in points if ch.get("health_score") is not None and ch["health_score"] < 30])
+            print("health_scores", [ch.get("health_score") for ch in points])
             if alert_flags > 0:
                 # 在后台线程播放报警音频
                 self._play_alert_audio()
@@ -872,7 +873,7 @@ class MainWindowController:
                 fs_for_spec = self.model.sampling_rate // downsample_factor if len(y) > 10000 else self.model.sampling_rate
                 freqs, times_arr, sxx = spectrogram(y_for_spec, nfft=self.model.nfft, fs=fs_for_spec)
                 
-                sxx_log = np.log(sxx / 1e-11)
+                sxx_log = np.log(np.maximum(sxx, 1e-15) / 1e-11)
                 max_val = np.max(sxx_log)
                 np_sxx_log = (sxx_log / max_val).T if max_val != 0 else sxx_log.T
                 spect_data.append((freqs, times_arr, np_sxx_log))
