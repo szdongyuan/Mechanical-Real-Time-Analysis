@@ -23,7 +23,8 @@
     "smooth_window": 4
   },
   "peak_detection": {
-    "zscore_threshold": 3.5
+    "zscore_threshold": 3.5,
+    "std_min_threshold": 1e-9
   }
 }
 

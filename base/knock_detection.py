@@ -70,6 +70,7 @@ class KnockDetector:
 
         peak_cfg = self.config.get("peak_detection") or {}
         self.zscore_threshold = float(peak_cfg.get("zscore_threshold") or 4.0)
+        self.std_min_threshold = float(peak_cfg.get("std_min_threshold") or 1e-9)
 
     # ------------------------------------------------------------------ #
     def run(self, signals: np.ndarray, sampling_rate: Optional[int] = None) -> KnockDetectionResult:
@@ -151,7 +152,7 @@ class KnockDetector:
             return 0.0
         mean = float(np.mean(flux))
         std = float(np.std(flux))
-        if std < 1e-9:
+        if std < self.std_min_threshold:
             return 0.0
         z = (flux - mean) / std
         return float(np.max(z))
