@@ -4,23 +4,23 @@
   "channels": [
     {
       "name": "good_motor",
-      "zscore_threshold": 7
+      "zscore_threshold": [0.1, 9]
     },
     {
       "name": "bad_motor",
-      "zscore_threshold": 7
+      "zscore_threshold": [0.1, 9]
     }
   ],
   "stft": {
     "window": "hann",
-    "frame_size": 1024,
-    "hop_size": 512
+    "frame_size": 512,
+    "hop_size": 128
   },
-  "bandpass_hz": [2000, 8000],
+  "bandpass_hz": [1500, 3000],
   "energy_metric": "power_sum",
   "flux": {
     "method": "positive_diff",
-    "smooth_window": 5
+    "smooth_window": 4
   },
   "peak_detection": {
     "zscore_threshold": 3.5
