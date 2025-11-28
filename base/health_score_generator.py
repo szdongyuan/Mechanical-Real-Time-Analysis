@@ -72,8 +72,8 @@ class HealthScoreGenerator:
 
         scores: Dict[str, float] = {}
         for channel_name, result in items:
-            exceeded = self._is_exceeded(result)
-            min_val, max_val = self._get_range(channel_name, exceeded)
+            system_status = self.judge_system_status(result)
+            min_val, max_val = self._get_range(channel_name, system_status)
             score = self._rng.uniform(min_val, max_val)
             scores[channel_name] = self._round_score(score)
 
@@ -84,7 +84,8 @@ class HealthScoreGenerator:
 
         return scores
 
-    def _is_exceeded(self, result: Any) -> bool:
+    @staticmethod
+    def judge_system_status(result: Any) -> int:
         """
         支持三种输入：
         - bool: True 表示超阈值
@@ -92,21 +93,21 @@ class HealthScoreGenerator:
         - 其他：统一视为未超阈值
         """
         if isinstance(result, bool):
-            return result
+            return int(result)
         if isinstance(result, Mapping):
-            if "exceeded" in result:
-                return bool(result["exceeded"])
             peak_value = result.get("peak_value")
             threshold = result.get("threshold")
-            if peak_value is not None and threshold is not None:
-                try:
-                    return float(peak_value) > float(threshold)
-                except (TypeError, ValueError):
-                    return False
-        return False
+            i = 0
+            for i_threshold in threshold:
+                if peak_value < i_threshold:
+                    return i
+                i += 1
+            return i
+        else:
+            return 0
 
-    def _get_range(self, channel_name: str, exceeded: bool) -> Tuple[float, float]:
-        key = "abnormal_range" if exceeded else "normal_range"
+    def _get_range(self, channel_name: str, system_status: int) -> Tuple[float, float]:
+        key = ["sleep_range", "normal_range", "abnormal_range"][system_status]
         channel_config = self.channel_ranges.get(channel_name, {})
         range_pair = channel_config.get(key) or self.default_ranges.get(key)
         if not range_pair or len(range_pair) != 2:

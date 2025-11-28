@@ -54,7 +54,7 @@ class MainWindowMode:
         self.nfft = 256
         self.ctx = sd._CallbackContext()
 
-        self.plot_time = 5
+        self.plot_time = 10
         self.start_record_time = None
         self.model_name = ""
 
@@ -641,7 +641,6 @@ class MainWindowController:
             if not points:
                 return
             alert_flags = sum([1 for ch in points if ch.get("health_score") is not None and ch["health_score"] < 30])
-            print("health_scores", [ch.get("health_score") for ch in points])
             if alert_flags > 0:
                 # 在后台线程播放报警音频
                 self._play_alert_audio()

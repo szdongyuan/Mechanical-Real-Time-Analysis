@@ -36,24 +36,21 @@ def run_peak_detection(signals: List[np.ndarray],
             signal = np.array(signal, copy=False)
             sr = int(sr_list[idx])
             detection = detector.run(signal, sr)
+            print(detection)
             for ch_result in detection.channels:
                 ch_name = ch_result.get("channel", f"channel_{len(results)}")
-                exceed = bool(ch_result.get("exceed_threshold"))
                 detail = {
                     "file": file_names[idx],
                     "channel": ch_name,
                     "max_flux": ch_result.get("max_flux", 0.0),
                     "max_zscore": ch_result.get("max_zscore", 0.0),
                     "threshold": ch_result.get("threshold"),
-                    "exceed_threshold": exceed,
                 }
                 results.append([
                     f"{file_names[idx]}::{ch_name}",
-                    "NG" if exceed else "OK",
                     json.dumps(detail, ensure_ascii=False),
                 ])
                 peak_result_map[ch_name] = {
-                    "exceeded": exceed,
                     "peak_value": ch_result.get("max_zscore") or ch_result.get("max_flux"),
                     "threshold": ch_result.get("threshold"),
                 }

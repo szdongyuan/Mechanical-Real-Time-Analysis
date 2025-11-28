@@ -48,7 +48,7 @@ class KnockDetector:
                     self.channel_names.append(name)
                     if "zscore_threshold" in item:
                         try:
-                            self.channel_thresholds[name] = float(item["zscore_threshold"])
+                            self.channel_thresholds[name] = item["zscore_threshold"]
                         except (TypeError, ValueError):
                             pass
         if not self.channel_names and isinstance(channels_cfg, Sequence):
@@ -99,7 +99,6 @@ class KnockDetector:
                 "max_flux": 0.0,
                 "max_zscore": 0.0,
                 "threshold": self.zscore_threshold,
-                "exceed_threshold": False,
             }
 
         freqs, _, Zxx = stft(
@@ -115,14 +114,12 @@ class KnockDetector:
         max_flux = float(flux.max()) if flux.size else 0.0
         max_zscore = self._max_zscore(flux)
         threshold = self.channel_thresholds.get(channel, self.zscore_threshold)
-        exceeded = max_zscore >= threshold
 
         return {
             "channel": channel,
             "max_flux": max_flux,
             "max_zscore": max_zscore,
             "threshold": threshold,
-            "exceed_threshold": exceeded,
         }
 
     # ------------------------------------------------------------------ #
