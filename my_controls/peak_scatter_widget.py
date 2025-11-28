@@ -60,33 +60,43 @@ class PeakScatterWidget(QWidget):
         self._plot.addLine(x=0, pen=pg.mkPen("#666666"))
         self._plot.addLine(y=0, pen=pg.mkPen("#666666"))
 
+        # 颜色映射：均衡分布，OK=绿色，NG从黄色开始
+        # OK 点 severity=0 显示绿色，NG 点 severity>=0.25 从黄色开始
         self._severity_cmap = pg.ColorMap(
-            np.array([0.0, 0.4, 0.75, 1.0]),
+            np.array([0.0, 0.25, 0.5, 0.75, 1.0]),
             np.array(
                 [
-                    [30, 150, 85, 255],
-                    [140, 205, 120, 255],
-                    [255, 210, 95, 255],
-                    [210, 30, 60, 255],
+                    [30, 150, 85, 255],     # 绿色 - OK 区域 (severity=0)
+                    [255, 220, 80, 255],    # 黄色 - 刚超出阈值
+                    [255, 160, 50, 255],    # 橙黄色 - 轻度异常
+                    [255, 100, 50, 255],    # 橙红色 - 中度异常
+                    [210, 30, 60, 255],     # 红色 - 严重异常
                 ]
             ),
         )
         self._colorbar_label = QLabel()
-        self._colorbar_label.setFixedWidth(26)
-        self._colorbar_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        self._colorbar_label.setFixedWidth(28)  # 与 12px 字体的"健康/异常"宽度匹配
+        self._colorbar_label.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         self._colorbar_label.setToolTip("颜色越接近红色表示评分越差/越异常")
-        self._colorbar_caption = QLabel("健康/异常")
-        self._colorbar_caption.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
-        self._colorbar_caption.setStyleSheet("color: rgb(220,220,220); font-size: 12px;")
+        # 上方标签：异常（红色端）
+        self._colorbar_top_caption = QLabel("异常")
+        self._colorbar_top_caption.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
+        self._colorbar_top_caption.setStyleSheet("color: rgb(210,30,60); font-size: 12px; font-weight: bold;")
+        # 下方标签：健康（绿色端）
+        self._colorbar_bottom_caption = QLabel("健康")
+        self._colorbar_bottom_caption.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        self._colorbar_bottom_caption.setStyleSheet("color: rgb(30,150,85); font-size: 12px; font-weight: bold;")
         self._refresh_colorbar_pixmap()
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._plot, 1)
         bar_layout = QVBoxLayout()
-        bar_layout.setContentsMargins(4, 0, 4, 0)
-        bar_layout.addWidget(self._colorbar_caption, 0, Qt.AlignHCenter)
+        bar_layout.setContentsMargins(4, 8, 4, 8)
+        bar_layout.setSpacing(2)
+        bar_layout.addWidget(self._colorbar_top_caption, 0, Qt.AlignHCenter)
         bar_layout.addWidget(self._colorbar_label, 0, Qt.AlignHCenter)
+        bar_layout.addWidget(self._colorbar_bottom_caption, 0, Qt.AlignHCenter)
         bar_layout.addStretch(1)
         layout.addLayout(bar_layout)
         self.set_plot_font_size()
@@ -307,14 +317,26 @@ class PeakScatterWidget(QWidget):
         return qcolor
 
     def _refresh_colorbar_pixmap(self):
-        width, height = 20, 160
+        # 动态获取 colorbar 高度，始终为图形高度的 85%
+        plot_height = self._plot.height()
+        if plot_height < 50:
+            return
+        height = int(plot_height * 0.85)
+        height = max(30, height)  # 最小高度 30，保证可见
+        width = 24  # 与标签宽度协调
         pixmap = QPixmap(width, height)
         pixmap.fill(Qt.transparent)
         gradient = QLinearGradient(0, height, 0, 0)
-        for pos in np.linspace(0.0, 1.0, 16):
+        for pos in np.linspace(0.0, 1.0, 32):
             gradient.setColorAt(pos, self._severity_to_color(pos))
         painter = QPainter(pixmap)
         painter.fillRect(0, 0, width, height, gradient)
         painter.end()
         self._colorbar_label.setPixmap(pixmap)
+        self._colorbar_label.setFixedHeight(height)
+
+    def resizeEvent(self, event):
+        """窗口大小改变时更新 colorbar 高度"""
+        super().resizeEvent(event)
+        self._refresh_colorbar_pixmap()
 
