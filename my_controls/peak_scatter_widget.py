@@ -53,7 +53,9 @@ class PeakScatterWidget(QWidget):
         
         # 绘制极坐标网格（同心圆和放射线）
         self._polar_grid_items = []
+        self._legend_item = None
         self._draw_polar_grid()
+        self._create_legend()
         
         self._scatter = pg.ScatterPlotItem()
         self._plot.addItem(self._scatter)
@@ -116,8 +118,9 @@ class PeakScatterWidget(QWidget):
             self._plot.removeItem(item)
         self._polar_grid_items.clear()
         
-        grid_pen = pg.mkPen(color=(100, 100, 100, 80), width=1)
-        radial_pen = pg.mkPen(color=(80, 80, 80, 60), width=1)
+        # 更明显的网格颜色
+        grid_pen = pg.mkPen(color=(140, 140, 140, 160), width=1)
+        radial_pen = pg.mkPen(color=(120, 120, 120, 140), width=1)
         
         # 绘制同心圆（半径刻度）
         radii = [0.3, 0.6, 0.9, 1.2, 1.5]
@@ -154,14 +157,36 @@ class PeakScatterWidget(QWidget):
         self._plot.addItem(center_marker)
         self._polar_grid_items.append(center_marker)
     
-    def set_plot_font_size(self):
-        font = QFont()
-        font.setPixelSize(12)
+    def _create_legend(self):
+        """创建图例"""
+        # 移除旧图例
+        if hasattr(self, '_legend_item') and self._legend_item is not None:
+            self._plot.removeItem(self._legend_item)
         
-        self._plot.getAxis('bottom').setStyle(tickFont=font)
-        self._plot.getAxis('left').setStyle(tickFont=font)
-        self._plot.getAxis('bottom').label.setFont(font)
-        self._plot.getAxis('left').label.setFont(font)
+        legend = pg.LegendItem(offset=(10, 10), labelTextColor='#cccccc')
+        legend.setParentItem(self._plot.getPlotItem())
+        
+        # 系统一：圆形
+        scatter1 = pg.ScatterPlotItem(
+            [], [], symbol='o', size=10,
+            brush=pg.mkBrush(100, 180, 120, 200),
+            pen=pg.mkPen('#888888', width=1)
+        )
+        legend.addItem(scatter1, '系统一')
+        
+        # 系统二：十字
+        scatter2 = pg.ScatterPlotItem(
+            [], [], symbol='+', size=10,
+            brush=pg.mkBrush(100, 160, 200, 200),
+            pen=pg.mkPen('#888888', width=1)
+        )
+        legend.addItem(scatter2, '系统二')
+        
+        self._legend_item = legend
+    
+    def set_plot_font_size(self):
+        """极坐标模式下坐标轴已隐藏，此方法保留兼容性"""
+        pass
         
     def set_channels(self, channels: List[Union[str, int]]):
         """

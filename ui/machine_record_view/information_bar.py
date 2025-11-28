@@ -118,9 +118,9 @@ class InformationBar(QWidget):
         self.health_evaluate_widget.set_value(0, overall_score)
 
         good_score = str(score_results.get("good_motor", "0"))
-        self.health_evaluate_widget.set_label_text(1, "系统 1 健康度: " + good_score)
+        self.health_evaluate_widget.set_label_text(1, "系统 1 健康度: ", value=str(good_score))
         bad_score = str(score_results.get("bad_motor", "0"))
-        self.health_evaluate_widget.set_label_text(2, "系统 2 健康度: " + bad_score)
+        self.health_evaluate_widget.set_label_text(2, "系统 2 健康度: ", value=str(bad_score))
 
     def add_item_to_nevigation_listview(self):
         self.add_widget_to_listview(self.information_level_widget)
