@@ -70,15 +70,17 @@ class KnockDetector:
 
         peak_cfg = self.config.get("peak_detection") or {}
         self.zscore_threshold = float(peak_cfg.get("zscore_threshold") or 4.0)
-        self.std_min_threshold = float(peak_cfg.get("std_min_threshold") or 1e-9)
 
-    # ------------------------------------------------------------------ #
+        # 标准差最小阈值，用于避免除零错误
+        self.std_min_threshold = float(self.config.get("std_min_threshold") or 1e-11)
+
+        # ------------------------------------------------------------------ #
+
     def run(self, signals: np.ndarray, sampling_rate: Optional[int] = None) -> KnockDetectionResult:
         sr = int(sampling_rate or self.sampling_rate)
         data = np.asarray(signals)
         if data.ndim == 1:
             data = data[None, :]
-
         results: List[Dict[str, Any]] = []
         for idx in range(data.shape[0]):
             channel_name = self._resolve_channel_name(idx)
@@ -86,8 +88,8 @@ class KnockDetector:
             ch_result = self._analyze_channel(ch_signal, sr, channel_name)
             results.append(ch_result)
         return KnockDetectionResult(channels=results)
+        # ------------------------------------------------------------------ #
 
-    # ------------------------------------------------------------------ #
     def _resolve_channel_name(self, idx: int) -> str:
         if idx < len(self.channel_names):
             return str(self.channel_names[idx])
@@ -101,7 +103,6 @@ class KnockDetector:
                 "max_zscore": 0.0,
                 "threshold": self.zscore_threshold,
             }
-
         freqs, _, Zxx = stft(
             signal,
             fs=sr,
@@ -115,15 +116,14 @@ class KnockDetector:
         max_flux = float(flux.max()) if flux.size else 0.0
         max_zscore = self._max_zscore(flux)
         threshold = self.channel_thresholds.get(channel, self.zscore_threshold)
-
         return {
             "channel": channel,
             "max_flux": max_flux,
             "max_zscore": max_zscore,
             "threshold": threshold,
         }
+        # ------------------------------------------------------------------ #
 
-    # ------------------------------------------------------------------ #
     def _compute_band_energy(self, freqs: np.ndarray, Zxx: np.ndarray) -> np.ndarray:
         if freqs.size == 0 or Zxx.size == 0:
             return np.zeros(1, dtype=np.float32)
@@ -142,7 +142,6 @@ class KnockDetector:
             diff = np.maximum(diff, 0.0)
         elif self.flux_method == "abs_diff":
             diff = np.abs(diff)
-
         if self.flux_smooth > 1:
             diff = uniform_filter1d(diff, size=self.flux_smooth, mode="nearest")
         return diff.astype(np.float32, copy=False)
@@ -156,4 +155,3 @@ class KnockDetector:
             return 0.0
         z = (flux - mean) / std
         return float(np.max(z))
-

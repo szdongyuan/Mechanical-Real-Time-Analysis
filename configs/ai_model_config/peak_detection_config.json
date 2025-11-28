@@ -4,11 +4,11 @@
   "channels": [
     {
       "name": "good_motor",
-      "zscore_threshold": [0.1, 9]
+      "zscore_threshold": [0.1, 8]
     },
     {
       "name": "bad_motor",
-      "zscore_threshold": [0.1, 9]
+      "zscore_threshold": [0.1, 8]
     }
   ],
   "stft": {
@@ -20,11 +20,8 @@
   "energy_metric": "power_sum",
   "flux": {
     "method": "positive_diff",
-    "smooth_window": 4
+    "smooth_window": 20
   },
-  "peak_detection": {
-    "zscore_threshold": 3.5,
-    "std_min_threshold": 1e-9
-  }
+  "std_min_threshold": 1e-11
 }
 
