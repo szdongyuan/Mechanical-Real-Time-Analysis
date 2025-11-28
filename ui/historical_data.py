@@ -45,6 +45,7 @@ from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QTableView, QHea
 from base.audio_data_manager import get_record_audio_data_from_db, get_record_audio_data_path
 from base.player_audio import AudioPlayer
 from consts.running_consts import DEFAULT_DIR
+from ui.audio_detail_dialog import show_audio_detail
 
 
 class HistoryDataWindow(QWidget):
@@ -55,13 +56,8 @@ class HistoryDataWindow(QWidget):
         self.history_data_table.setIconSize(QSize(25, 25))
         self.history_data_model = CustomStandardItemModel(0, 6, [4])
         self.history_data_table.setModel(self.history_data_model)
-        self.paly_flag = False
 
-        self.player = None
-        self._playing_row = None  # 当前正在播放的行索引（操作列固定为第5列）
-
-        self.play_icon = QIcon(DEFAULT_DIR + "ui/ui_pic/sequence_pic/play.png")
-        self.pause_icon = QIcon(DEFAULT_DIR + "ui/ui_pic/sequence_pic/pause.png")
+        self.view_icon = QIcon(DEFAULT_DIR + "ui/ui_pic/sequence_pic/data.png")
         self.history_data_table.clicked.connect(self.on_cell_clicked)
 
         self.init_ui()
@@ -140,7 +136,7 @@ class HistoryDataWindow(QWidget):
             }
         """)
         self.history_data_table.model().setHorizontalHeaderLabels(
-            ["文件名称", "录制时间", "结束时间", "操作员", "备注", "操作"]
+            ["文件名称", "录制时间", "结束时间", "操作员", "备注", "查看"]
         )
         header = self.history_data_table.horizontalHeader()
         # 设置所有列自动拉伸填充整个表格区域
@@ -185,7 +181,7 @@ class HistoryDataWindow(QWidget):
     ):
         audio_data_items = []
         record_audio_name = self.get_record_audio_data_name(record_audio_data_path)
-        play_item = CustomStandardItem(DEFAULT_DIR + "ui/ui_pic/sequence_pic/play.png", "播放")
+        view_item = CustomStandardItem(DEFAULT_DIR + "ui/ui_pic/sequence_pic/data.png", "查看")
         record_audio_name_item = QStandardItem(record_audio_name)
         record_time_item = QStandardItem(str(record_time))
         stop_time_item = QStandardItem(str(stop_time))
@@ -196,7 +192,7 @@ class HistoryDataWindow(QWidget):
         audio_data_items.append(stop_time_item)
         audio_data_items.append(operator_item)
         audio_data_items.append(description_item)
-        audio_data_items.append(play_item)
+        audio_data_items.append(view_item)
         self.history_data_model.appendRow(audio_data_items)
 
     def get_record_audio_data_name(self, record_audio_data_path: str):
@@ -205,65 +201,25 @@ class HistoryDataWindow(QWidget):
         return ""
 
     def on_cell_clicked(self, index):
+        """点击查看按钮，弹出音频详情对话框"""
         if index.column() == 5:
-            item = self.history_data_model.item(index.row(), index.column())
-            if item.flag:
-                if self.paly_flag:
-                    return
-                record_time = self.get_cell_content(index.row(), 1)
-                wave_file_path = get_record_audio_data_path(record_time)
-                print(wave_file_path)
-                wave_data = self.load_wave_data(wave_file_path)
-                self.player_wave_data(wave_data)
-                item.setIcon(self.pause_icon)
-                item.setText("暂停")
-                item.flag = False
-                self.paly_flag = True
-                self._playing_row = index.row()
+            record_time = self.get_cell_content(index.row(), 1)
+            original_audio_path = get_record_audio_data_path(record_time)
+
+            if original_audio_path:
+                show_audio_detail(
+                    original_path=original_audio_path,
+                    record_time=record_time,
+                    parent=self
+                )
             else:
-                self.player.stop()
-                item.setIcon(self.play_icon)
-                item.setText("播放")
-                item.flag = True
-                self.paly_flag = False
-                self._playing_row = None
-            # 通知视图更新图标
-            self.history_data_model.dataChanged.emit(index, index, [Qt.DecorationRole])
+                print(f"未找到音频文件：record_time={record_time}")
 
     def get_cell_content(self, row, column):
         item = self.history_data_model.item(row, column)
         if item:
             return item.text()
         return None
-
-    def load_wave_data(self, wave_file_path):
-        wave_data = librosa.load(wave_file_path, sr=44100, mono=False, dtype=np.float32)[0]
-        if len(wave_data.shape) == 2:
-            wave_data = wave_data.T
-        return wave_data
-
-    def player_wave_data(self, wave_data):
-        self.player = AudioPlayer(wave_data)
-        self.player.playback_finished.connect(self.on_playback_finished)
-        self.player.start()
-
-    def on_playback_finished(self):
-        # 播放结束后，将操作列的图标/文本重置为“播放”状态
-        try:
-            if self._playing_row is not None:
-                item = self.history_data_model.item(self._playing_row, 5)
-                if item is not None:
-                    item.setIcon(self.play_icon)
-                    item.setText("播放")
-                    item.flag = True
-                    # 触发视图刷新
-                    idx = self.history_data_model.index(self._playing_row, 5)
-                    self.history_data_model.dataChanged.emit(idx, idx, [Qt.DecorationRole])
-        except Exception:
-            pass
-        finally:
-            self.paly_flag = False
-            self._playing_row = None
 
     def show(self):
         # 展示前自动刷新一次数据
