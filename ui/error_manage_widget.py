@@ -35,6 +35,9 @@ from PyQt5.QtWidgets import QItemDelegate, QPushButton, QComboBox
 
 from base.audio_data_manager import get_warning_audio_data_from_db, update_warning_audio_data
 from consts import ui_style_const
+from consts.running_consts import DEFAULT_DIR
+
+from my_controls.look_analysis_report import open_html_in_default_browser
 
 
 class ErrorManageWidget(QWidget):
@@ -77,8 +80,8 @@ class ErrorManageWidget(QWidget):
             QTableView::item {
                 border-top: 1px solid rgb(70, 70, 70);
                 color: rgb(255, 255, 255);
-                padding-left: 10px;
-                padding-right: 10px;
+                padding-left: 5px;
+                padding-right: 5px;
             }
             QTableView::item:selected {
                     background-color: rgb(24, 144, 255);
@@ -133,21 +136,30 @@ class ErrorManageWidget(QWidget):
                 "结束时间",
                 "操作",
                 "处理状态",
-                "备注",
+                "查看结果",
             ]
         )
         header = self.error_manage_table.horizontalHeader()
-        # 设置所有列自动拉伸填充整个表格区域
-        header.setSectionResizeMode(QHeaderView.Stretch)
-        # 固定列宽的列使用 Interactive 模式
-        header.setSectionResizeMode(7, QHeaderView.Interactive)  # 操作按钮列
-        header.setSectionResizeMode(8, QHeaderView.Interactive)  # 处理状态下拉框列
-        self.error_manage_table.setColumnWidth(7, 150)
-        self.error_manage_table.setColumnWidth(8, 120)
+        column_count = self.error_manage_model.columnCount()
+        # 先将所有列设置为 Stretch，使其自动拉伸填满 QTableView 宽度
+        for col in range(column_count):
+            header.setSectionResizeMode(col, QHeaderView.Stretch)
+        # 最后三列设置为固定宽度：操作列、处理状态列、查看结果列
+        fixed_columns = {
+            7: 140,  # 操作按钮列
+            8: 125,  # 处理状态下拉框列
+            9: 90,   # 查看结果（常看报告）列
+        }
+        for col, width in fixed_columns.items():
+            header.setSectionResizeMode(col, QHeaderView.Fixed)
+            self.error_manage_table.setColumnWidth(col, width)
 
         # 数据加载改为显式接口调用：请调用 load_warning_data()
 
         error_manage_table_layout = QVBoxLayout()
+        # 让 QTableView 的宽度与 ErrorManageWidget 一致（去掉左右边距）
+        error_manage_table_layout.setContentsMargins(0, 2, 0, 0)
+        error_manage_table_layout.setSpacing(0)
         error_manage_table_layout.addWidget(self.error_manage_table)
 
         return error_manage_table_layout
@@ -171,6 +183,9 @@ class ErrorManageWidget(QWidget):
         self.setup_buttons_in_btn_column()
         if result:
             self.setup_combobox(reversed_result)
+
+        # 在最后一列添加“常看报告”超链接按钮
+        self.setup_report_link_column()
 
     def add_warning_data(self, audio_datas):
         for audio_data in audio_datas:
@@ -215,7 +230,6 @@ class ErrorManageWidget(QWidget):
         record_audio_name_item = QStandardItem(file_name)
         record_time_item = QStandardItem(str(record_time))
         stop_time_item = QStandardItem(str(stop_time))
-        description_item = QStandardItem(description)
         audio_data_items.append(warning_time_item)
         audio_data_items.append(warning_level_item)
         audio_data_items.append(warning_status_item)
@@ -225,9 +239,24 @@ class ErrorManageWidget(QWidget):
         audio_data_items.append(stop_time_item)
         audio_data_items.append(QStandardItem(""))
         audio_data_items.append(QStandardItem(""))
-        audio_data_items.append(description_item)
+        audio_data_items.append(QStandardItem(""))
 
         self.error_manage_model.appendRow(audio_data_items)
+
+    def get_cell_value(self, row: int, column: int):
+        """
+        获取表格中指定行、指定列单元格的内容。
+
+        :param row: 行号（从 0 开始）
+        :param column: 列号（从 0 开始）
+        :return: 单元格文本内容（若无效则返回空字符串）
+        """
+        model = self.error_manage_model
+        index = model.index(row, column)
+        if not index.isValid():
+            return ""
+        data = index.data()
+        return "" if data is None else str(data)
 
     def get_record_audio_data_name(self, record_audio_data_path: str):
         if record_audio_data_path:
@@ -270,6 +299,14 @@ class ErrorManageWidget(QWidget):
             combobox.addItems(["确认已处理", "确认未处理", "未确认", "忽略"])
             combobox.setStyleSheet(dark_combobox_style)
             combobox.setCurrentText(audio_datas[row][7])
+            # 下拉框宽度与所在单元格（列）宽度保持一致
+            col_width = self.error_manage_table.columnWidth(8)
+            combobox.setFixedWidth(col_width - 10)
+            # 下拉列表弹出视图宽度也与单元格一致
+            try:
+                combobox.view().setFixedWidth(col_width - 10)
+            except Exception:
+                pass
             # 禁用滚轮修改选项
             combobox.installEventFilter(self)
             # 下拉变更即写库
@@ -325,6 +362,36 @@ class ErrorManageWidget(QWidget):
             index = model.index(row, btn_col)
             table.setIndexWidget(index, container)
 
+    def setup_report_link_column(self):
+        """
+        在表格最后一列添加“常看报告”超链接样式按钮，点击后打印行号。
+        """
+        table = self.error_manage_table
+        model = table.model()
+        link_col = model.columnCount() - 1  # 最后一列
+
+        link_style = """
+            QPushButton {
+                color: rgb(24, 144, 255);
+                background-color: transparent;
+                border: none;
+                text-decoration: underline;
+                font-size: 15px;
+            }
+            QPushButton:hover {
+                color: rgb(135, 206, 250);
+            }
+        """
+
+        for row in range(model.rowCount()):
+            link_btn = QPushButton("常看报告")
+            link_btn.setStyleSheet(link_style)
+            link_btn.setCursor(Qt.PointingHandCursor)
+            link_btn.clicked.connect(lambda _, r=row: self.on_view_report_clicked(r))
+
+            index = model.index(row, link_col)
+            table.setIndexWidget(index, link_btn)
+
     def on_deal_btn_clicked(self, row):
         print(f"处理第 {row} 行")
         # 同步更新下拉框（将触发写库）
@@ -342,6 +409,19 @@ class ErrorManageWidget(QWidget):
         combo = self.error_manage_table.indexWidget(combo_index)
         if isinstance(combo, QComboBox):
             combo.setCurrentText("忽略")
+
+    def on_view_report_clicked(self, row: int):
+        """
+        “常看报告”超链接点击回调：当前只打印行号。
+        """
+        file_name = self.get_cell_value(row, 4)
+        web_url = DEFAULT_DIR + "reports/Report_" + file_name + ".html"
+        code = open_html_in_default_browser(web_url)
+        if code == 0:
+            print("打开报告失败")
+        elif code == 1:
+            print("打开报告失败")
+
 
     def on_deal_status_changed(self, row: int, new_text: str):
         # 使用关键信息定位记录
