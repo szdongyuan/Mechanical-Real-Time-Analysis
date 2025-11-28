@@ -94,7 +94,7 @@ class HistoryDataWindow(QWidget):
                     padding-right: 10px;
             }
             QTableView::item:selected {
-                    background-color: rgb(24, 144, 255);
+                    background-color: rgb(75, 75, 75);
             }
             QHeaderView::section {
                     background-color: rgb(45, 45, 45);

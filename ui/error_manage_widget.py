@@ -49,7 +49,21 @@ class ErrorManageWidget(QWidget):
         self.error_manage_model = CustomStandardItemModel(0, 10, [9])
         self.error_manage_table.setModel(self.error_manage_model)
 
-        # 监听单元格编辑变化（用于“备注”列）
+        self.adjust_column_false = True
+
+        # 最后三列固定宽度：操作列(7)、处理状态列(8)、查看结果列(9)
+        self.fixed_column_widths = {
+            7: 140,
+            8: 125,
+            9: 90,
+        }
+
+        # 列宽调整相关
+        self.min_column_width = 50  # 最小列宽
+        self.is_adjusting_columns = False  # 防止递归调整
+        self.previous_column_widths = {}  # 记录上次的列宽
+
+        # 监听单元格编辑变化（用于"备注"列）
         self.error_manage_model.dataChanged.connect(self.on_model_data_changed)
 
         self.init_ui()
@@ -64,10 +78,14 @@ class ErrorManageWidget(QWidget):
         error_manage_table_layout = self.create_error_manage_table_layout()
         self.setLayout(error_manage_table_layout)
 
+        self.hide()
+
     def create_error_manage_table_layout(self):
         self.error_manage_table.verticalHeader().setDefaultSectionSize(40)
         # 隐藏左侧行号列，使其与背景色一致
         self.error_manage_table.verticalHeader().setVisible(False)
+        # 禁用水平滚动条
+        self.error_manage_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # 深色主题样式，与主界面风格统一
         self.error_manage_table.setStyleSheet(
             """QTableView {
@@ -84,7 +102,7 @@ class ErrorManageWidget(QWidget):
                 padding-right: 5px;
             }
             QTableView::item:selected {
-                    background-color: rgb(24, 144, 255);
+                    background-color: rgb(75, 75, 75);
             }
             QHeaderView::section {
                     background-color: rgb(45, 45, 45);
@@ -141,18 +159,19 @@ class ErrorManageWidget(QWidget):
         )
         header = self.error_manage_table.horizontalHeader()
         column_count = self.error_manage_model.columnCount()
-        # 先将所有列设置为 Stretch，使其自动拉伸填满 QTableView 宽度
+        # 前几列使用可调宽度（Interactive），最后三列使用固定宽度（Fixed）
         for col in range(column_count):
-            header.setSectionResizeMode(col, QHeaderView.Stretch)
-        # 最后三列设置为固定宽度：操作列、处理状态列、查看结果列
-        fixed_columns = {
-            7: 140,  # 操作按钮列
-            8: 125,  # 处理状态下拉框列
-            9: 90,   # 查看结果（常看报告）列
-        }
-        for col, width in fixed_columns.items():
-            header.setSectionResizeMode(col, QHeaderView.Fixed)
+            if col in self.fixed_column_widths:
+                header.setSectionResizeMode(col, QHeaderView.Fixed)
+            else:
+                header.setSectionResizeMode(col, QHeaderView.Interactive)
+
+        # 先设置固定列的宽度
+        for col, width in self.fixed_column_widths.items():
             self.error_manage_table.setColumnWidth(col, width)
+
+        # 连接列宽变化信号
+        header.sectionResized.connect(self.on_column_resized)
 
         # 数据加载改为显式接口调用：请调用 load_warning_data()
 
@@ -163,6 +182,146 @@ class ErrorManageWidget(QWidget):
         error_manage_table_layout.addWidget(self.error_manage_table)
 
         return error_manage_table_layout
+
+    def adjust_column_widths(self):
+        """
+        根据当前表格宽度，调整非固定列（前几列）的宽度，
+        使所有列宽度之和与 ErrorManageWidget / QTableView 的宽度尽量一致。
+        """
+        table_width = self.error_manage_table.viewport().width()
+        if table_width <= 0:
+            return
+
+        # 固定列总宽度
+        fixed_total = sum(self.fixed_column_widths.values())
+        # 需要自适应的列（非固定列）
+        all_columns = range(self.error_manage_model.columnCount())
+        flex_columns = [c for c in all_columns if c not in self.fixed_column_widths]
+        if not flex_columns:
+            return
+
+        available = table_width - fixed_total
+
+        # 均分剩余宽度给可调列
+        per = available // len(flex_columns)
+        remainder = available % len(flex_columns)
+        
+        self.is_adjusting_columns = True
+        for i, col in enumerate(flex_columns):
+            width = per + (1 if i < remainder else 0)
+            self.error_manage_table.setColumnWidth(col, width)
+        self.is_adjusting_columns = False
+        
+        # 记录初始列宽
+        self.save_column_widths()
+
+    def save_column_widths(self):
+        """保存当前所有列的宽度"""
+        self.previous_column_widths = {}
+        for col in range(self.error_manage_model.columnCount()):
+            self.previous_column_widths[col] = self.error_manage_table.columnWidth(col)
+
+    def on_column_resized(self, logical_index, old_size, new_size):
+        """
+        列宽调整事件处理：当调整某一列宽度时，逐个调整后续可调列的宽度。
+        
+        :param logical_index: 被调整列的索引
+        :param old_size: 调整前的宽度
+        :param new_size: 调整后的宽度
+        """
+        # 防止递归调整
+        if self.is_adjusting_columns:
+            return
+        
+        # 固定列不参与联动
+        if logical_index in self.fixed_column_widths:
+            return
+        
+        # 计算宽度变化量
+        delta = new_size - old_size
+        if delta == 0:
+            return
+        
+        # 获取所有可调列
+        all_columns = range(self.error_manage_model.columnCount())
+        flex_columns = [c for c in all_columns if c not in self.fixed_column_widths]
+        
+        # 找出当前列之后的可调列
+        subsequent_columns = [c for c in flex_columns if c > logical_index]
+        if not subsequent_columns:
+            # 没有后续列，恢复原宽度
+            self.is_adjusting_columns = True
+            self.error_manage_table.setColumnWidth(logical_index, old_size)
+            self.is_adjusting_columns = False
+            return
+        
+        # 计算实际可以调整的宽度
+        actual_delta = delta
+        
+        # 如果是放大当前列（delta > 0），需要逐个检查后续列
+        if delta > 0:
+            # 计算后续列可以缩小的总空间
+            available_shrink = 0
+            for col in subsequent_columns:
+                current_width = self.error_manage_table.columnWidth(col)
+                available_shrink += max(0, current_width - self.min_column_width)
+            
+            # 如果后续列可缩小空间不足，限制当前列的放大幅度
+            if available_shrink < delta:
+                actual_delta = available_shrink
+                if actual_delta == 0:
+                    # 完全不能放大，恢复原宽度
+                    self.is_adjusting_columns = True
+                    self.error_manage_table.setColumnWidth(logical_index, old_size)
+                    self.is_adjusting_columns = False
+                    return
+                else:
+                    # 限制放大幅度
+                    new_size = old_size + actual_delta
+                    self.is_adjusting_columns = True
+                    self.error_manage_table.setColumnWidth(logical_index, new_size)
+                    self.is_adjusting_columns = False
+        
+        # 逐个调整后续列的宽度
+        self.is_adjusting_columns = True
+        remaining_delta = -actual_delta  # 需要分配的总变化量（相反方向）
+        
+        for col in subsequent_columns:
+            if remaining_delta == 0:
+                break
+            
+            current_width = self.error_manage_table.columnWidth(col)
+            
+            # 计算这一列可以承担的变化量
+            if remaining_delta > 0:
+                # 需要放大这一列
+                new_col_width = current_width + remaining_delta
+                adjustment = remaining_delta
+            else:
+                # 需要缩小这一列
+                max_shrink = current_width - self.min_column_width
+                if max_shrink <= 0:
+                    # 这一列已经是最小宽度，跳到下一列
+                    continue
+                
+                # 计算实际可以缩小的量
+                if abs(remaining_delta) <= max_shrink:
+                    # 这一列足够承担全部变化
+                    adjustment = remaining_delta
+                    new_col_width = current_width + adjustment
+                else:
+                    # 这一列只能承担部分变化，缩小到最小宽度
+                    adjustment = -max_shrink
+                    new_col_width = self.min_column_width
+            
+            # 设置新宽度
+            self.error_manage_table.setColumnWidth(col, new_col_width)
+            remaining_delta -= adjustment
+        
+        self.is_adjusting_columns = False
+        
+        # 保存新的列宽
+        self.save_column_widths()
 
     def load_warning_data(self):
         """
@@ -447,6 +606,17 @@ class ErrorManageWidget(QWidget):
     def show(self):
         self.load_warning_data()
         super().show()
+        if self.adjust_column_false:
+            self.adjust_column_false = False
+            self.adjust_column_widths()
+            # 保存初始列宽（adjust_column_widths内部已调用）
+
+    def resizeEvent(self, event):
+        """
+        当 ErrorManageWidget 大小发生变化时，自动重新分配前几列的宽度，
+        确保总宽度始终与表格/父窗口宽度保持一致。
+        """
+        super().resizeEvent(event)
 
 
 class CustomStandardItemModel(QStandardItemModel):
