@@ -83,8 +83,8 @@ class HistoryDataWindow(QWidget):
         # 隐藏左侧行号列，使其与背景色一致
         self.history_data_table.verticalHeader().setVisible(False)
         # 深色主题样式，与主界面风格统一
-        self.history_data_table.setStyleSheet(
-            """QTableView {
+        self.history_data_table.setStyleSheet("""
+            QTableView {
                     background-color: rgb(55, 55, 55);
                     color: rgb(255, 255, 255);
                     gridline-color: rgb(70, 70, 70);
@@ -110,8 +110,35 @@ class HistoryDataWindow(QWidget):
             QTableView QTableCornerButton::section {
                     background-color: rgb(45, 45, 45);
                     border: 1px solid rgb(70, 70, 70);
-            }"""
-        )
+            }
+            QScrollArea {
+                border: none;
+                background-color: rgb(25, 25, 25);
+            }
+            QScrollBar:vertical {
+                background-color: rgb(30, 30, 30);
+                width: 8px;
+                margin: 0px;
+                border: none;
+            }
+            QScrollBar::handle:vertical {
+                background-color: rgb(80, 80, 80);
+                min-height: 30px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: rgb(100, 100, 100);
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+                background: none;
+            }
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: none;
+            }
+        """)
         self.history_data_table.model().setHorizontalHeaderLabels(
             ["文件名称", "录制时间", "结束时间", "操作员", "备注", "操作"]
         )

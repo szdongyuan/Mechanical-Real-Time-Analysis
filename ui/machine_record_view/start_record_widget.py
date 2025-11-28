@@ -1,7 +1,7 @@
 import os
 
-from PyQt5.QtCore import QUrl, Qt
-from PyQt5.QtGui import QIcon, QDesktopServices, QFont, QPalette, QColor
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QPalette, QColor
 from PyQt5.QtWidgets import QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QLineEdit, QFrame
 
 from consts.running_consts import DEFAULT_DIR
@@ -93,7 +93,7 @@ class StartRecordWidget(QWidget):
             try:
                 show_solid_window = ShowSolidWindow(step_path)
                 solid_widget = show_solid_window.get_widget()
-                solid_widget.setMinimumSize(550, 150)
+                solid_widget.setMinimumSize(550, 50)
                 solid_widget.setMaximumSize(700, 410)
                 step_widget = solid_widget
             except Exception as exc:

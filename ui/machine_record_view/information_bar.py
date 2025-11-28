@@ -7,7 +7,7 @@ from PyQt5.QtGui import QStandardItemModel, QStandardItem,QIcon, QPalette, QColo
 from PyQt5.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QListView, QButtonGroup, QTextEdit
 
 from my_controls.custom_label import CustomInfoLabel
-from ui.machine_record_view.health_evaluate_widget import HealthEvaluateWidget
+from my_controls.health_evaluate_widget import HealthEvaluateWidget
 
 
 @dataclass
@@ -53,6 +53,7 @@ class InformationBar(QWidget):
         super().__init__(parent)
 
         self.navition_listview = QListView()
+        self.widget = QWidget()
         self.navition_listview.setIconSize(QSize(34, 34))
         self.navition_listview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # 禁止编辑列表内容
@@ -69,19 +70,15 @@ class InformationBar(QWidget):
         self._listview_owned_widgets = []
         # 记录 widget -> item，用于动态拉伸最后一项
         self._widget_to_item = {}
-        # 互斥按钮组（参考 wav_or_spect_graph.py 的模式按钮）
         self._nav_btn_group = QButtonGroup(self)
         self._nav_btn_group.setExclusive(True)
 
         self.information_level_widget = InformationLevelWidget()
-        # 先完成字段初始化，再添加按钮项
-        # self.queue_widget = MessageQueueWidget()
         self.health_evaluate_widget = HealthEvaluateWidget(3)
+        # self.health_evaluate_widget.setStyleSheet("background-color: rgb(60,60,60);")
         self.add_item_to_nevigation_listview()
         self.initUI()
-        # 监听 viewport 尺寸变化，动态让 text_edit 铺满剩余空间
         self.navition_listview.viewport().installEventFilter(self)
-        # self._update_text_edit_row_height()
         self.init_health_evaluate_widget()
 
     def initUI(self):
@@ -94,8 +91,6 @@ class InformationBar(QWidget):
         # self.setWindowFlags(Qt.FramelessWindowHint)
         layout = QVBoxLayout()
         self.navition_listview.setMinimumHeight(500)
-        # 列表项之间的间距（按钮之间距离）
-        # self.navition_listview.setSpacing(5)
         self.navition_listview.setStyleSheet("""
             QListView {
                 border:none;
@@ -106,25 +101,21 @@ class InformationBar(QWidget):
             }
         """)
         self.swap_size_btn.setStyleSheet("border:none; color:rgb(204,204,204);font-size: 14px;")
-        # btn_layout = QHBoxLayout()
-        # btn_layout.addWidget(self.swap_size_btn, alignment=Qt.AlignLeft)
-        # layout.addLayout(btn_layout)
         layout.addWidget(self.swap_size_btn, stretch=0, alignment=Qt.AlignLeft)
         layout.addWidget(self.navition_listview, stretch=1, alignment=Qt.AlignTop)
         layout.addStretch()
-        # layout.addStretch()
         self.setLayout(layout)
 
     def init_health_evaluate_widget(self):
-        self.health_evaluate_widget.set_label_text(0, "整体健康度: 0.0")
-        self.health_evaluate_widget.set_label_text(1, "系统 1 健康度: 0.0")
-        self.health_evaluate_widget.set_label_text(2, "系统 2 健康度: 0.0")
+        self.health_evaluate_widget.set_label_text(0, name="整体健康度", value="0.0")
+        self.health_evaluate_widget.set_label_text(1, name="系统 1 健康度", value="0.0")
+        self.health_evaluate_widget.set_label_text(2, name="系统 2 健康度", value="0.0")
 
     def write_score(self, results: list):
         score_results = results[0].get("health_scores", {})
         overall_score = score_results.get("overall", "0")
         overall_score = str(overall_score)
-        self.health_evaluate_widget.set_label_text(0, "整体健康度: " + overall_score)
+        self.health_evaluate_widget.set_value(0, overall_score)
 
         good_score = str(score_results.get("good_motor", "0"))
         self.health_evaluate_widget.set_label_text(1, "系统 1 健康度: " + good_score)
@@ -133,7 +124,15 @@ class InformationBar(QWidget):
 
     def add_item_to_nevigation_listview(self):
         self.add_widget_to_listview(self.information_level_widget)
-        self.add_widget_to_listview(self.health_evaluate_widget)
+        
+        self.widget.setStyleSheet("background-color: rgb(60,60,60);border-radius: 6px;")
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0,0,0,0)
+        layout.addWidget(self.health_evaluate_widget)
+        # 设置布局约束，使容器大小跟随内容变化
+        layout.setSizeConstraint(QVBoxLayout.SetMinAndMaxSize)
+        self.widget.setLayout(layout)
+        self.add_widget_to_listview(self.widget)
         # 监听 health_evaluate_widget 的高度变化信号
         self.health_evaluate_widget.height_changed.connect(self._on_health_widget_height_changed)
         # self.add_widget_to_listview(self.queue_widget)
@@ -216,12 +215,17 @@ class InformationBar(QWidget):
         当 health_evaluate_widget 展开 / 折叠时，动态调整其在 QListView 中对应行的高度，
         避免展开后显示不全。
         """
-        item = self._widget_to_item.get(self.health_evaluate_widget)
+        item = self._widget_to_item.get(self.widget)
         if item is None:
             return
 
+        # 强制更新布局，使容器高度跟随内容变化
+        self.health_evaluate_widget.updateGeometry()
+        self.widget.layout().activate()  # 激活布局，强制重新计算
+        self.widget.adjustSize()  # 调整容器大小以适应内容
+        
         # 重新根据控件当前的 sizeHint 计算高度
-        new_height = max(36, self.health_evaluate_widget.sizeHint().height())
+        new_height = max(36, self.widget.sizeHint().height())
         item.setSizeHint(QSize(0, new_height))
 
         # 通知 QListView 重新布局
@@ -281,19 +285,14 @@ class InformationLevelWidget(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        self.setFixedSize(270, 100)
-
-        # h_layout_top = QHBoxLayout()
-        # h_layout_top.addWidget(self.evaluate_health)
-        # h_layout_top.addWidget(self.warning_count)
+        self.setFixedHeight(100)
         
         h_layout_bottom = QHBoxLayout()
+        h_layout_bottom.setContentsMargins(0, 0, 0, 10)
         h_layout_bottom.addWidget(self.average_spl)
+        h_layout_bottom.addStretch()
         h_layout_bottom.addWidget(self.runing_time)
-        v_layout = QVBoxLayout()
-        # v_layout.addLayout(h_layout_top)
-        v_layout.addLayout(h_layout_bottom)
-        self.setLayout(v_layout)
+        self.setLayout(h_layout_bottom)
 
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet("background-color: rgb(45,45,45); border-radius: 6px;")

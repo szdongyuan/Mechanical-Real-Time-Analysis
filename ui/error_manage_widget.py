@@ -93,6 +93,33 @@ class ErrorManageWidget(QWidget):
             QTableView QTableCornerButton::section {
                     background-color: rgb(45, 45, 45);
                     border: 1px solid rgb(70, 70, 70);
+            }
+            QScrollArea {
+                border: none;
+                background-color: rgb(25, 25, 25);
+            }
+            QScrollBar:vertical {
+                background-color: rgb(30, 30, 30);
+                width: 8px;
+                margin: 0px;
+                border: none;
+            }
+            QScrollBar::handle:vertical {
+                background-color: rgb(80, 80, 80);
+                min-height: 30px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: rgb(100, 100, 100);
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+                background: none;
+            }
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: none;
             }"""
         )
         self.error_manage_table.model().setHorizontalHeaderLabels(
