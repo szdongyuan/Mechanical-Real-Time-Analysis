@@ -905,7 +905,7 @@ def open_main_window():
     view.rm_controller = controller
     
     # 禁用最大化/恢复按钮
-    # view.setWindowFlags(view.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+    view.setWindowFlags(view.windowFlags() & ~Qt.WindowMaximizeButtonHint)
     
     # 设置窗口为最大化
     view.setWindowState(view.windowState() | Qt.WindowMaximized)
