@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime
 
-from PyQt5.QtCore import Qt, QItemSelectionModel, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QStandardItem, QStandardItemModel, QPalette, QColor
 from PyQt5.QtWidgets import QApplication, QAbstractItemView, QWidget, QHBoxLayout, QLabel, QListView, QFrame
 from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QComboBox, QMessageBox
@@ -101,8 +101,8 @@ class DeviceListWindow(QWidget):
         """
         self.api_combo_box.setStyleSheet(combobox_style)
 
-        # 列表视图样式
-        listview_style = """
+        # 设备列表视图样式（与右侧通道列表保持一致的深色风格，使用复选框勾选）
+        device_listview_style = """
             QListView {
                 background-color: rgb(55, 55, 55);
                 color: rgb(255, 255, 255);
@@ -114,14 +114,30 @@ class DeviceListWindow(QWidget):
                 padding: 5px;
             }
             QListView::item:selected {
-                background-color: rgb(24, 144, 255);
+                /* 选中行使用与 hover 相同的深灰色，避免亮色块 */
+                background-color: rgb(70, 70, 70);
             }
             QListView::item:hover {
                 background-color: rgb(70, 70, 70);
             }
+            QListView::indicator {
+                background-color: rgb(45, 45, 45);
+                width: 16px;
+                height: 16px;
+                border-radius: 3px;
+                border: 1px solid rgb(120, 120, 120);
+            }
+            QListView::indicator:unchecked {
+                image: none;
+            }
+            QListView::indicator:checked {
+                padding: 2px;
+                image: url(./ui/ui_pic/sequence_pic/true.png);
+            }
         """
-        self.list_view.setStyleSheet(listview_style)
-        self.channel_list.setStyleSheet(listview_style)
+        self.list_view.setStyleSheet(device_listview_style)
+
+        self.channel_list.setStyleSheet(device_listview_style)
 
         # 标签样式
         label_style = "color: rgb(255, 255, 255); font-size: 15px;"
@@ -142,16 +158,25 @@ class DeviceListWindow(QWidget):
 
     def create_device_list_layout(self):
         sellected_device_label = QLabel("选择设备")
-        self.list_view.setSelectionMode(QAbstractItemView.SingleSelection)
+        # 取消左侧设备列表的选中高亮，仅通过复选框表示当前选中设备
+        self.list_view.setSelectionMode(QAbstractItemView.NoSelection)
+        self.list_view.setSelectionRectVisible(False)
         self.list_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
         item_model = QStandardItemModel()
         current_api = self.api_combo_box.currentText()
         self.device_list = self.api_info[current_api][self.device_type]
         for device in self.device_list:
-            item_model.appendRow(QStandardItem(device["name"]))
+            item = QStandardItem(device["name"])
+            # 使用复选框表示当前选中的设备，但仍保持单选逻辑
+            item.setCheckable(True)
+            item.setCheckState(Qt.Unchecked)
+            # 禁用 Qt 默认勾选行为，由 clicked 信号统一控制，保证只勾选一个
+            item.setFlags(item.flags() & ~Qt.ItemIsUserCheckable)
+            item_model.appendRow(item)
         self.list_view.setModel(item_model)
         self.list_view.setSelectionRectVisible(True)
-        self.list_view.clicked.connect(self.on_select_item)
+        # 点击行时：更新复选框状态 + 保持原有选择逻辑（调用 on_select_item）
+        self.list_view.clicked.connect(self.on_device_item_clicked)
 
         device_list_layout = QVBoxLayout()
         device_list_layout.addWidget(sellected_device_label)
@@ -159,17 +184,52 @@ class DeviceListWindow(QWidget):
 
         return device_list_layout
 
+    def on_device_item_clicked(self, index):
+        """
+        左侧设备列表：使用复选框显示当前设备，但保持原来的“单选设备”逻辑。
+        """
+        model: QStandardItemModel = self.list_view.model()
+        if model is None:
+            return
+
+        # 先全部取消勾选，保证只有一个设备被勾选
+        for row in range(model.rowCount()):
+            item = model.item(row, 0)
+            if item is not None:
+                item.setCheckState(Qt.Unchecked)
+
+        # 勾选当前点击的这一行
+        item = model.itemFromIndex(index)
+        if item is not None:
+            item.setCheckState(Qt.Checked)
+
+        # 保持原有逻辑：选中设备、刷新右侧通道列表等
+        self.on_select_item(index)
+
     def create_channel_list_layout(self):
         channel_model = QStandardItemModel()
         self.channel_list.setModel(channel_model)
         sellected_channel_label = QLabel("选择通道")
-        self.channel_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        # 取消多选高亮模式，改用复选框
+        self.channel_list.setSelectionMode(QAbstractItemView.NoSelection)
         self.channel_list.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        # 点击行时切换复选框状态
+        self.channel_list.clicked.connect(self.on_channel_item_clicked)
         channel_layout = QVBoxLayout()
         channel_layout.addWidget(sellected_channel_label)
         channel_layout.addWidget(self.channel_list)
 
         return channel_layout
+
+    def on_channel_item_clicked(self, index):
+        """点击通道列表项时切换复选框状态"""
+        item = self.channel_list.model().itemFromIndex(index)
+        if item:
+            # 切换复选框状态
+            if item.checkState() == Qt.Checked:
+                item.setCheckState(Qt.Unchecked)
+            else:
+                item.setCheckState(Qt.Checked)
 
     def create_btn_layout(self):
         btn_layout = QHBoxLayout()
@@ -247,19 +307,27 @@ class DeviceListWindow(QWidget):
         # 同步内部 selected_device 与通道列表
         self.on_select_item(target_index)
 
-        # 3) 选中通道（selected_channels 为 0 基索引）
+        # 勾选当前设备对应的复选框，保持与 UI 一致
+        model = self.list_view.model()
+        if model is not None:
+            for row in range(model.rowCount()):
+                item = model.item(row, 0)
+                if item is not None:
+                    item.setCheckState(Qt.Unchecked)
+            item = model.itemFromIndex(target_index)
+            if item is not None:
+                item.setCheckState(Qt.Checked)
+
+        # 3) 选中通道（selected_channels 为 0 基索引），通过设置复选框状态
         ch_model: QStandardItemModel = self.channel_list.model()
         if ch_model is None:
             return
-        sel_model = self.channel_list.selectionModel()
-        if sel_model is None:
-            return
-        sel_model.clearSelection()
         for ch in selected_channels or []:
             row = int(ch)
             if 0 <= row < ch_model.rowCount():
-                idx = ch_model.index(row, 0)
-                sel_model.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                item = ch_model.item(row, 0)
+                if item:
+                    item.setCheckState(Qt.Checked)
         # 同步内部 selected_channels
         self.set_selected_channels()
 
@@ -268,7 +336,11 @@ class DeviceListWindow(QWidget):
         current_api = self.api_combo_box.currentText()
         self.device_list = self.api_info[current_api][self.device_type]
         for device in self.device_list:
-            item_model.appendRow(QStandardItem(device["name"]))
+            item = QStandardItem(device["name"])
+            item.setCheckable(True)
+            item.setCheckState(Qt.Unchecked)
+            item.setFlags(item.flags() & ~Qt.ItemIsUserCheckable)
+            item_model.appendRow(item)
         self.list_view.setModel(item_model)
 
     def on_click_check_btn(self):
@@ -326,12 +398,25 @@ class DeviceListWindow(QWidget):
         self.channel_list.model().clear()
 
         for channel in range(max_channels):
-            self.channel_list.model().appendRow(QStandardItem(str(channel + 1)))
+            item = QStandardItem(str(channel + 1))
+            # 设置为可勾选的复选框
+            item.setCheckable(True)
+            item.setCheckState(Qt.Unchecked)
+            # 禁用 Qt 默认的复选框点击行为，完全由 clicked 信号控制
+            # 这样点击文本和复选框都能正确切换状态
+            item.setFlags(item.flags() & ~Qt.ItemIsUserCheckable)
+            self.channel_list.model().appendRow(item)
 
     def set_selected_channels(self):
-        selected_indices = self.channel_list.selectedIndexes()
-        # UI 显示为 1 基，内部存储为 0 基整型
-        self.selected_channels = [int(idx.data()) - 1 for idx in selected_indices]
+        # 从复选框状态获取选中的通道
+        ch_model = self.channel_list.model()
+        self.selected_channels = []
+        if ch_model:
+            for row in range(ch_model.rowCount()):
+                item = ch_model.item(row, 0)
+                if item and item.checkState() == Qt.Checked:
+                    # UI 显示为 1 基，内部存储为 0 基整型
+                    self.selected_channels.append(int(item.text()) - 1)
 
     @staticmethod
     def save_device_data_to_json(device_name, device_chanels, selected_channels, current_api, mic_index):
