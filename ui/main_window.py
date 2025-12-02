@@ -650,6 +650,7 @@ class MainWindowController:
             if alert_flags > 0:
                 # 在后台线程播放报警音频
                 self._play_alert_audio()
+                
             self._indicator_engine.process_predictions(
                 [PredictionItem(result=pt["status"]) for pt in points]
             )
@@ -904,7 +905,7 @@ def open_main_window():
     view.rm_controller = controller
     
     # 禁用最大化/恢复按钮
-    view.setWindowFlags(view.windowFlags() & ~Qt.WindowMaximizeButtonHint)
+    # view.setWindowFlags(view.windowFlags() & ~Qt.WindowMaximizeButtonHint)
     
     # 设置窗口为最大化
     view.setWindowState(view.windowState() | Qt.WindowMaximized)

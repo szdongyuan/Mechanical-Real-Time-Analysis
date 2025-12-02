@@ -21,16 +21,16 @@ class Info_Message_Widget(QWidget):
     
     def __init__(self, 
                  severity: str = "严重",
-                 package_name: str = "",
+
                  message: str = "",
-                 value: str = "",
+
                  parent=None):
         super().__init__(parent)
         
         self._severity = severity
-        self._package_name = package_name
+
         self._message = message
-        self._value = value
+
         
         self.setAttribute(Qt.WA_DeleteOnClose)
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
@@ -55,7 +55,7 @@ class Info_Message_Widget(QWidget):
         # 底部按钮容器（用于居中按钮，避免 alignment 导致的溢出问题）
         btn_container = QWidget()
         btn_layout = QHBoxLayout(btn_container)
-        btn_layout.setContentsMargins(0, 8, 0, 8)
+        btn_layout.setContentsMargins(0, 0, 0, 8)
         confirm_btn = self._create_confirm_button()
         btn_layout.addStretch()
         btn_layout.addWidget(confirm_btn)
@@ -66,14 +66,11 @@ class Info_Message_Widget(QWidget):
         self.setStyleSheet("""
             QWidget {
                 background-color: rgb(65, 65, 65);
-                color: rgb(255, 255, 255);
-                border-radius: 5px;
-                
+                color: rgb(255, 255, 255);             
             }
             QPushButton {
                 background-color: rgb(40, 40, 40);
                 color: rgb(255, 255, 255);
-                border: none;
                 border-radius: 5px;
                 padding: 5px 10px;
             }
@@ -87,7 +84,7 @@ class Info_Message_Widget(QWidget):
         top_bar = QWidget()
         top_bar.setFixedHeight(40)
         layout = QHBoxLayout(top_bar)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setContentsMargins(12, 8, 12, 0)
         
         # 严重程度图标和文字
         severity_color = self.SEVERITY_COLORS.get(self._severity, "#ff4d4f")
@@ -113,17 +110,11 @@ class Info_Message_Widget(QWidget):
         return top_bar
     
     def _create_content_area(self) -> QWidget:
-        """创建内容区域：包装名 + 消息 + 数值"""
+        """创建内容区域：仅显示消息"""
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(12, 8, 12, 12)
-        layout.setSpacing(6)
-        
-        # 包装名标签（蓝色小字）
-        if self._package_name:
-            package_label = QLabel(self._package_name)
-            package_label.setStyleSheet("color: rgb(24, 144, 255); font-size: 12px")
-            layout.addWidget(package_label)
+        layout.setContentsMargins(12, 0, 12, 0)
+        layout.setSpacing(0)
         
         # 主要消息（白色，较大字体）
         message_label = QLabel(self._message)
@@ -133,14 +124,6 @@ class Info_Message_Widget(QWidget):
         message_label.setFont(message_font)
         message_label.setStyleSheet("color: rgb(255, 255, 255);")
         layout.addWidget(message_label)
-        
-        # 数值（白色，略小字体）
-        if self._value:
-            value_label = QLabel(self._value)
-            value_label.setStyleSheet("color: rgb(220, 220, 220); font-size: 14px")
-            layout.addWidget(value_label)
-        
-        layout.addStretch()
         
         return content
     
@@ -160,12 +143,15 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     
     # 示例：严重警告
-    widget = Info_Message_Widget(
+    widget = QWidget()
+    layout = QVBoxLayout(widget)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    msg_widget = Info_Message_Widget(
         severity="严重",
-        package_name="包装名：AI密度",
         message="振动传感器2异常",
-        value="3.8mm/s"
     )
+    layout.addWidget(msg_widget)
     widget.show()
     
     sys.exit(app.exec_())

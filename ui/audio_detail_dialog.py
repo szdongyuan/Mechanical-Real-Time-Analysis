@@ -121,17 +121,17 @@ class AudioDetailDialog(QDialog):
         scroll_layout.setSpacing(12)
         
         # 原始音频播放器
-        self._original_player = AudioPlayerWidget("🔊 原始混合音频")
+        self._original_player = AudioPlayerWidget("🔊 包装机原始混合音频")
         scroll_layout.addWidget(self._original_player)
         self._players.append(self._original_player)
         
         # 声源分离音频1
-        self._separated1_player = AudioPlayerWidget("⚙️ 声源 1")
+        self._separated1_player = AudioPlayerWidget("⚙️ 声源 1：机械手和拨烟杆")
         scroll_layout.addWidget(self._separated1_player)
         self._players.append(self._separated1_player)
         
         # 声源分离音频2
-        self._separated2_player = AudioPlayerWidget("⚙️ 声源 2")
+        self._separated2_player = AudioPlayerWidget("⚙️ 声源 2：叠层板")
         scroll_layout.addWidget(self._separated2_player)
         self._players.append(self._separated2_player)
         

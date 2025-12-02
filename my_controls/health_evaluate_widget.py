@@ -32,7 +32,7 @@ class HealthEvaluateWidget(QWidget):
         # 创建折叠/展开按钮
         self._toggle_btn = QPushButton()
         self._toggle_btn.setFixedSize(24, 24)
-        self._toggle_btn.setIcon(QIcon(self._down_arrow_path))
+        self._toggle_btn.setIcon(QIcon(self._up_arrow_path))
         self._toggle_btn.setIconSize(QSize(16, 16))
         self._toggle_btn.setFlat(True)
         self._toggle_btn.clicked.connect(self._toggle_expand)
