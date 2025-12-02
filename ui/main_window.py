@@ -404,6 +404,12 @@ class MainWindowController:
             self._light_timer.start()
 
         if self.model.segment_extractor:
+            # 重新设置音频源引用，因为 stop_record() 中的 set_up_audio_store_zero() 
+            # 会创建新的数组，导致 segment_extractor 持有的旧引用失效
+            self.model.segment_extractor.set_audio_source(
+                self.model.data_struct.audio_data,
+                write_index_ref=self.model.storage_filled_len
+            )
             if not self.model.segment_extractor.is_running:
                 self.model.segment_extractor.start()
         # self.start_analysis_process()
