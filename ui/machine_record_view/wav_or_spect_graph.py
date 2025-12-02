@@ -34,8 +34,8 @@ class WavOrSpectGraph(QWidget):
         # Y轴动态阈值相关变量
         self.current_y_range = {"lower": -0.02, "upper": 0.02}  # 当前Y轴范围
         self.max_value_history = []  # 记录历史最大值 [(timestamp, max_abs_value), ...]
-        self.history_window = 10.0  # 历史窗口大小（秒）
-        self.recovery_duration = 5.0  # 恢复到默认值的时间（秒）
+        self.history_window = 1.0  # 历史窗口大小（秒）
+        self.recovery_duration = 2.0  # 恢复到默认值的时间（秒）
         self.recovery_start_time = None  # 开始恢复的时间
         self.recovery_start_range = None  # 开始恢复时的Y轴范围
         self.is_recovering = False  # 是否正在恢复中
