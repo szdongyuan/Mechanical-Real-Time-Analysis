@@ -1,11 +1,12 @@
 [
   {
-    "-notes": "Health-score settings.",
+    "-notes": "Health-score settings. sleep_range用于停机状态，normal_range用于正常运行，abnormal_range用于被敲击状态",
     "module_name": "health_score",
     "module_config": {
       "precision": 1,
       "random_seed": null,
       "defaults": {
+        "sleep_range": [98, 100],
         "normal_range": [90, 95],
         "abnormal_range": [55, 60]
       },
@@ -30,4 +31,3 @@
     }
   }
 ]
-

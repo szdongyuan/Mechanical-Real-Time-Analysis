@@ -1,16 +1,22 @@
 {
-  "-notes": "Peak-detection parameters.",
+  "-notes": "Peak-detection parameters. energy_threshold用于判断电机是否运行，zscore_threshold用于判断是否被敲击",
   "sampling_rate": 44100,
   "channels": [
     {
       "name": "good_motor",
-      "zscore_threshold": [0.1, 8]
+      "zscore_threshold": 8.0,
+      "energy_threshold": 1e-6
     },
     {
       "name": "bad_motor",
-      "zscore_threshold": [0.1, 8]
+      "zscore_threshold": 8.0,
+      "energy_threshold": 1e-6
     }
   ],
+  "defaults": {
+    "zscore_threshold": 4.0,
+    "energy_threshold": 1e-6
+  },
   "stft": {
     "window": "hann",
     "frame_size": 512,
@@ -24,4 +30,3 @@
   },
   "std_min_threshold": 1e-11
 }
-
