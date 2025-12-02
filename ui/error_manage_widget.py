@@ -28,7 +28,7 @@
 
 import sys
 
-from PyQt5.QtCore import Qt, QSize, QEvent
+from PyQt5.QtCore import Qt, QSize, QEvent, QTimer
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QPalette, QColor
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTableView, QHeaderView
 from PyQt5.QtWidgets import QItemDelegate, QPushButton, QComboBox
@@ -187,7 +187,12 @@ class ErrorManageWidget(QWidget):
         """
         根据当前表格宽度，调整非固定列（前几列）的宽度，
         使所有列宽度之和与 ErrorManageWidget / QTableView 的宽度尽量一致。
+        使用 QTimer.singleShot 延迟执行，等待布局完成后再调整。
         """
+        QTimer.singleShot(100, self._do_adjust_column_widths)
+
+    def _do_adjust_column_widths(self):
+        """实际执行列宽调整的方法"""
         table_width = self.error_manage_table.viewport().width()
         if table_width <= 0:
             return

@@ -40,6 +40,8 @@ class CenterWidget(QWidget):
         self.history_data_btn.clicked.connect(self.on_history_data_btn_clicked)
         self.alarm_management_btn.clicked.connect(self.on_alarm_management_btn_clicked)
         self.device_list_btn.clicked.connect(self.on_device_list_btn_clicked)
+        self.information_bar.swap_size_btn.clicked.connect(self.error_manage_widget.adjust_column_widths)
+        self.navigation_bar.swap_size_btn.clicked.connect(self.error_manage_widget.adjust_column_widths)
 
         self.init_ui()
 
