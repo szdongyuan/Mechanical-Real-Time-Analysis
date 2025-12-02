@@ -85,17 +85,6 @@ class WavOrSpectGraph(QWidget):
             }
         """)
 
-    def create_header_layout(self):
-        header_layout = QHBoxLayout()
-        header_layout.addSpacing(10)
-        header_layout.addWidget(self.now_wav_btn)
-        header_layout.addWidget(self.now_spect_btn)
-        header_layout.addStretch()
-        header_layout.addWidget(self.green_light)
-        header_layout.addWidget(self.red_light)
-        header_layout.addSpacing(10)
-        return header_layout
-
     def create_chart_graph(self):
         layout = QVBoxLayout()
         wav_label_left = QLabel()
@@ -109,6 +98,8 @@ class WavOrSpectGraph(QWidget):
         font.setPixelSize(12)
         
         for graph in [waveform_graph_left, waveform_graph_right]:
+            graph.setLabel('bottom', units='s')
+            graph.setLabel('left', '(V)')
             graph.getAxis('bottom').setStyle(tickFont=font)
             graph.getAxis('left').setStyle(tickFont=font)
             graph.getAxis('bottom').label.setFont(font)
@@ -119,6 +110,8 @@ class WavOrSpectGraph(QWidget):
         spect_graph_left = PlotWidget()
         spect_graph_right = PlotWidget()
         for graph in [spect_graph_left, spect_graph_right]:
+            graph.setLabel('bottom', units='s')
+            graph.setLabel('left', units='Hz')
             graph.getAxis('bottom').setStyle(tickFont=font)
             graph.getAxis('left').setStyle(tickFont=font)
             graph.getAxis('bottom').label.setFont(font)
@@ -140,9 +133,7 @@ class WavOrSpectGraph(QWidget):
         header_layout_left = QHBoxLayout()
         header_layout_right = QHBoxLayout()
         header_layout_left.addWidget(wav_label_left)
-        # header_layout_left.addStretch()
         header_layout_right.addWidget(wav_label_right)
-        # header_layout_right.addStretch()
         header_layout_right.addWidget(self.prev_page)
         header_layout_right.addWidget(self.next_page)
         header_layout.addLayout(header_layout_left)
@@ -154,7 +145,6 @@ class WavOrSpectGraph(QWidget):
 
         spect_header_layout = QHBoxLayout()
         spect_header_layout.addWidget(spect_label_left)
-        # spect_header_layout.addStretch()
         spect_header_layout.addWidget(spect_label_right)
 
         spect_layout = QHBoxLayout()
@@ -162,9 +152,9 @@ class WavOrSpectGraph(QWidget):
         spect_layout.addWidget(spect_graph_right)
 
         layout.addLayout(header_layout)
-        layout.addLayout(wav_layout, 1)
+        layout.addLayout(wav_layout)
         layout.addLayout(spect_header_layout)
-        layout.addLayout(spect_layout, 2)
+        layout.addLayout(spect_layout)
         self.chart_graph.setLayout(layout)
 
     def hide_right_part_widget(self, is_true: bool):
