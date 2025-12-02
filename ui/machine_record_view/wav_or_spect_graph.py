@@ -64,7 +64,7 @@ class WavOrSpectGraph(QWidget):
 
         main_layout = QVBoxLayout()
         main_layout.addWidget(self.chart_graph)
-        main_layout.setContentsMargins(0, 10, 0, 10)
+        main_layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(main_layout)
 
         self.setStyleSheet("""

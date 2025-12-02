@@ -1,5 +1,6 @@
-from operator import contains
-from PyQt5.QtCore import Qt
+from typing import override
+
+from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFrame
 
@@ -142,6 +143,11 @@ class CenterWidget(QWidget):
 
     def hide_right_part_widget(self, is_true: bool):
         self.wav_or_spect_graph.hide_right_part_widget(is_true)
+
+    @override
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        self.error_manage_widget.adjust_column_widths()
 
     @property
     def record_mode_btn(self):
