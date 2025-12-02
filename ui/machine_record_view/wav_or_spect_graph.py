@@ -98,8 +98,8 @@ class WavOrSpectGraph(QWidget):
         font.setPixelSize(12)
         
         for graph in [waveform_graph_left, waveform_graph_right]:
-            graph.setLabel('bottom', units='s')
-            graph.setLabel('left', '(V)')
+            graph.setLabel('bottom', "时间", units='s')
+            graph.setLabel('left', "电压", units='V')
             graph.getAxis('bottom').setStyle(tickFont=font)
             graph.getAxis('left').setStyle(tickFont=font)
             graph.getAxis('bottom').label.setFont(font)
@@ -110,8 +110,8 @@ class WavOrSpectGraph(QWidget):
         spect_graph_left = PlotWidget()
         spect_graph_right = PlotWidget()
         for graph in [spect_graph_left, spect_graph_right]:
-            graph.setLabel('bottom', units='s')
-            graph.setLabel('left', units='Hz')
+            graph.setLabel('bottom', "时间", units='s')
+            graph.setLabel('left', "频率", units='Hz')
             graph.getAxis('bottom').setStyle(tickFont=font)
             graph.getAxis('left').setStyle(tickFont=font)
             graph.getAxis('bottom').label.setFont(font)
