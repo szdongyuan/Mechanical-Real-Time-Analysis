@@ -69,7 +69,6 @@ class CenterWidget(QWidget):
         h_layout.addWidget(self.navigation_bar)
         h_layout.addWidget(v_frame_left)
         h_layout.addWidget(self.cteate_center_splitter())
-        # h_layout.addLayout(v_layout)
         h_layout.addWidget(v_frame_right)
         h_layout.addWidget(self.information_bar)
 
@@ -147,7 +146,9 @@ class CenterWidget(QWidget):
     @override
     def changeEvent(self, event):
         super().changeEvent(event)
-        self.error_manage_widget.adjust_column_widths()
+        # 只在窗口状态改变时调整列宽，避免拖动 Splitter 时的性能问题
+        if event.type() == QEvent.WindowStateChange:
+            self.error_manage_widget.adjust_column_widths()
 
     @property
     def record_mode_btn(self):

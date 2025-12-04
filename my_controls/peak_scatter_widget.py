@@ -84,6 +84,7 @@ class PeakScatterWidget(QWidget):
         self._colorbar_label = QLabel()
         self._colorbar_label.setFixedWidth(28)  # 与 12px 字体的"健康/异常"宽度匹配
         self._colorbar_label.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        self._colorbar_label.setScaledContents(True)  # 让 pixmap 自适应 label 大小
         self._colorbar_label.setToolTip("颜色越接近红色表示评分越差/越异常")
         # 上方标签：异常（红色端）
         self._colorbar_top_caption = QLabel("异常")
@@ -102,9 +103,9 @@ class PeakScatterWidget(QWidget):
         bar_layout.setContentsMargins(4, 8, 4, 8)
         bar_layout.setSpacing(2)
         bar_layout.addWidget(self._colorbar_top_caption, 0, Qt.AlignHCenter)
-        bar_layout.addWidget(self._colorbar_label, 0, Qt.AlignHCenter)
+        bar_layout.addWidget(self._colorbar_label, 1, Qt.AlignHCenter)
         bar_layout.addWidget(self._colorbar_bottom_caption, 0, Qt.AlignHCenter)
-        bar_layout.addStretch(1)
+        # bar_layout.addStretch(1)
         layout.addLayout(bar_layout)
         self.set_plot_font_size()
 
@@ -395,13 +396,7 @@ class PeakScatterWidget(QWidget):
         return qcolor
 
     def _refresh_colorbar_pixmap(self):
-        # 动态获取 colorbar 高度，始终为图形高度的 85%
-        plot_height = self._plot.height()
-        if plot_height < 50:
-            return
-        height = int(plot_height * 0.85)
-        height = max(30, height)  # 最小高度 30，保证可见
-        width = 24  # 与标签宽度协调
+        width, height = 24, 160 # 与标签宽度协调
         pixmap = QPixmap(width, height)
         pixmap.fill(Qt.transparent)
         gradient = QLinearGradient(0, height, 0, 0)
@@ -411,10 +406,4 @@ class PeakScatterWidget(QWidget):
         painter.fillRect(0, 0, width, height, gradient)
         painter.end()
         self._colorbar_label.setPixmap(pixmap)
-        self._colorbar_label.setFixedHeight(height)
-
-    def resizeEvent(self, event):
-        """窗口大小改变时更新 colorbar 高度"""
-        super().resizeEvent(event)
-        self._refresh_colorbar_pixmap()
 
