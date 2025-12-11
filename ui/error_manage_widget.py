@@ -583,7 +583,7 @@ class ErrorManageWidget(QWidget):
         code = open_html_in_default_browser(web_url)
         if code == 0:
             print("打开报告失败")
-        elif code == 1:
+        elif code == 2:
             print("打开报告失败")
 
 
