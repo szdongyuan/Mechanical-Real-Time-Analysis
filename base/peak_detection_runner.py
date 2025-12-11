@@ -44,7 +44,6 @@ def run_peak_detection(signals: List[np.ndarray],
             sr = int(sr_list[idx])
             detection = detector.run(signal, sr)
             for ch_result in detection.channels:
-                print(f"[{ch_result.get('channel')}] energy_level={ch_result.get('energy_level', 0.0):.6e}, max_zscore={ch_result.get('max_zscore', 0.0):.4f}")
                 ch_name = ch_result.get("channel", f"channel_{len(results)}")
                 motor_state = ch_result.get("motor_state", MotorState.RUNNING)
                 state_name = state_names.get(motor_state, "unknown")
