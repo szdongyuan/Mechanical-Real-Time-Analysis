@@ -15,7 +15,6 @@ from PyQt5.QtWidgets import QMessageBox, QFileDialog
 from base.audio_data_manager import auto_save_data
 from base.database.fixed_time_ng_total import query_warning_between
 from base.analysis_worker_process import analysis_worker
-from base.indicator_engine import IndicatorEngine, PredictionItem
 from base.load_device_info import load_devices_data
 from base.sound_device_manager import get_default_device
 from base.log_manager import LogManager
@@ -25,12 +24,10 @@ from base.data_struct.data_deal_struct import DataDealStruct
 from base.data_struct.audio_segment_extractor import AudioSegmentExtractor
 from base.sound_device_manager import sd, change_default_mic
 from base.tcp.tcp_client import send_dict
-# from base.training_model_management import TrainingModelManagement
 
 from consts import error_code
 from consts.running_consts import DEFAULT_DIR, PEAK_DETECTION_CONFIG_JSON, PEAK_DETECTION_SETTINGS_JSON
 
-# from ui.center_widget import CenterWidget
 from my_controls.countdown import Countdown
 from ui.device_list import DeviceListWindow
 from ui.machine_record_view.center_widget import CenterWidget
@@ -41,7 +38,7 @@ class MainWindowMode:
         self.logger = LogManager.set_log_handler("core")
         self.data_struct = DataDealStruct()
         self.page_index = 0
-        
+
         self.sampling_rate = 44100
         self.channels = None
         self.selected_channels = list()
@@ -49,7 +46,7 @@ class MainWindowMode:
         self.tcp_config = dict()
         self.ai_analysis_config = dict()
         self.read_channel = 0
-        
+
         self.total_display_time = 600
         self.nfft = 256
         self.ctx = sd._CallbackContext()
@@ -68,8 +65,7 @@ class MainWindowMode:
         self.auto_save_count = Countdown(self.total_display_time - 10)
         self.infor_limit_count = Countdown(self.infor_limit_config.get("duration_min", 100) * 60)
         self.auto_write_timer = QTimer()
-        self.auto_write_timer.setInterval(100)  # 从200ms优化到100ms，提高流畅度
-        # self.auto_write_timer.timeout.connect(self.flush_audio_queue_to_array)
+        self.auto_write_timer.setInterval(100)
 
         self.segment_extractor = None
 
@@ -106,7 +102,7 @@ class MainWindowMode:
                 self.channels = 1
                 self.selected_channels = [0]
 
-    
+
     def set_up_audio_store_zero(self):
         self.data_struct.audio_data = np.zeros((len(self.selected_channels), self.max_points), dtype=np.float16)
         self.data_struct.audio_data_arr = [
@@ -284,18 +280,12 @@ class MainWindowController:
         self._temp_dir = os.path.join(tempfile.gettempdir(), "audio_segments_tmp")
         os.makedirs(self._temp_dir, exist_ok=True)
         self._peak_threshold = 3.5
-        
+
         # 报警音频播放器
         self._alert_player: AudioPlayer = None
         self._alert_audio_data = None
         self._alert_sample_rate = 44100
         self._load_alert_audio()
-
-        # 指示灯引擎与定时器
-        self._indicator_engine = IndicatorEngine(red_add_seconds=3.0)
-        self._light_timer = QTimer()
-        self._light_timer.setInterval(200)  # 200ms 刷新
-        self._light_timer.timeout.connect(self._on_light_tick)
 
         self.init_infor_limit_config()
         self.init_tcp_config()
@@ -317,7 +307,7 @@ class MainWindowController:
             self.view.next_page.setEnabled(False)
         self.view.prev_page.clicked.connect(self.prev_page)
         self.view.next_page.clicked.connect(self.next_page)
-        
+
         self.view.record_btn.clicked.connect(self.record_audio)
         self.view.stop_btn.clicked.connect(self.stop_record)
         self.view.select_store_path_action.triggered.connect(self.select_store_path)
@@ -351,7 +341,7 @@ class MainWindowController:
         else:
             if self.view.prev_page.isEnabled():
                 self.view.prev_page.setEnabled(False)
-        
+
         if self.model.page_index == 0:
             self.view.prev_page.setEnabled(False)
 
@@ -360,7 +350,7 @@ class MainWindowController:
             if not self.view.prev_page.isEnabled():
                 self.view.prev_page.setEnabled(True)
             self.model.page_index += 1
-            # self.view.create_chart_graph(len(self.model.selected_channels) - 2)
+
             if self.model.page_index == (len(self.model.selected_channels) + 1) // 2 - 1:
                 if (len(self.model.selected_channels) - self.model.page_index * 2) == 1:
                     self.is_hide_graph = True
@@ -387,24 +377,12 @@ class MainWindowController:
                 pass
         self.view.audio_store_path_lineedit.setEnabled(False)
         self.model.data_struct.record_flag = True
-        # self.view.set_light_color(self.view.green_light, "green")
-        # self.view.set_light_color(self.view.red_light, "gray")
-        # if hasattr(self.widget, "recording_started"):
-        #     self.widget.recording_started.emit()
         self.model.auto_write_timer.start()
         self.model.auto_save_count.count_start()
-        # self.model.infor_limit_count.count_start()
         self.model.start_record_time = time.strftime("%Y%m%d%H%M%S", time.localtime())
-        # self.view.chart_graph.clear()
-        # self.init_new_canvas()
-        # log_controller.info("开始录制音频")
-
-        # 启动指示灯定时器
-        if self.model.infor_limit_config.get("enable_limit", False):
-            self._light_timer.start()
 
         if self.model.segment_extractor:
-            # 重新设置音频源引用，因为 stop_record() 中的 set_up_audio_store_zero() 
+            # 重新设置音频源引用，因为 stop_record() 中的 set_up_audio_store_zero()
             # 会创建新的数组，导致 segment_extractor 持有的旧引用失效
             self.model.segment_extractor.set_audio_source(
                 self.model.data_struct.audio_data,
@@ -415,30 +393,19 @@ class MainWindowController:
         # self.start_analysis_process()
 
         self.model.audio_manager.start_recording(self.model.ctx, self.model.selected_channels, self.model.sampling_rate, self.model.channels)
-        
+
     def stop_record(self):
         self.model.data_struct.record_flag = False
-        # 停止指示灯定时器
-        if self.model.infor_limit_config.get("enable_limit", False):
-            self._light_timer.stop()
-        
-        # self.view.set_light_color(self.view.green_light, "gray")
-        # self.view.set_light_color(self.view.red_light, "gray")
+
         self.view.audio_store_path_lineedit.setEnabled(True)
         self.model.auto_save_count.count_stop()
         self.model.auto_write_timer.stop()
-        # self.model.infor_limit_count.count_stop()
         self.model.set_up_audio_store_zero()
         self.model.start_record_time = None
         if self.model.segment_extractor and self.model.segment_extractor.is_running:
             self.model.segment_extractor.stop()
-        # self.stop_analysis_process()
         self.model.audio_manager.stop_recording()
-        # log_controller.info("停止录制音频")
-        # if hasattr(self.widget, "recording_stopped"):
-        #     self.widget.recording_stopped.emit()
 
-        self._indicator_engine._colorindicator.red.remaining_seconds = 0
 
     def change_waveform_title(self):
         if len(self.model.selected_channels) - self.model.page_index * 2 > 0:
@@ -550,7 +517,7 @@ class MainWindowController:
         # 如果正在播放，不重复触发
         if self._alert_player is not None and self._alert_player.is_playing:
             return
-        
+
         def _play_in_thread():
             try:
                 self._alert_player = AudioPlayer(
@@ -560,7 +527,7 @@ class MainWindowController:
                 self._alert_player.start()
             except Exception as exc:
                 self.logger.error(f"播放报警音频失败: {exc}")
-        
+
         play_thread = threading.Thread(target=_play_in_thread, daemon=True)
         play_thread.start()
 
@@ -650,10 +617,7 @@ class MainWindowController:
             if alert_flags > 0:
                 # 在后台线程播放报警音频
                 self._play_alert_audio()
-                
-            self._indicator_engine.process_predictions(
-                [PredictionItem(result=pt["status"]) for pt in points]
-            )
+
             try:
                 self.view.start_record_widget.update_peak_scatter(points)
             except Exception as exc:
@@ -775,7 +739,6 @@ class MainWindowController:
             return
         warning_count = len(query_result)
         if warning_count >= int(self.model.infor_limit_config.get("max_count", 100)):
-            self._indicator_engine.process_predictions([PredictionItem(result="NG")])
             self.by_tcp_send_warning("NG")
             return
 
@@ -797,36 +760,6 @@ class MainWindowController:
                 )
             except Exception as e:
                 QMessageBox.critical(self.widget, "错误", f"发送警告失败: {e}")
-
-    def _on_light_tick(self):
-        """指示灯定时器回调，更新灯状态"""
-        try:
-            # 未录音则不点亮指示灯
-            if not self.model.data_struct.record_flag:
-                self.view.set_light_color(self.view.green_light, "gray")
-                self.view.set_light_color(self.view.red_light, "gray")
-                return
-            
-            # 时间推进
-            self._indicator_engine.tick(self._light_timer.interval() / 1000.0)
-            
-            # 获取当前状态并更新UI
-            snapshot = self._indicator_engine.render_snapshot()
-            if not snapshot:
-                # 若尚无任何数据，默认点亮绿灯
-                self.view.set_light_color(self.view.red_light, "gray")
-                self.view.set_light_color(self.view.green_light, "green")
-                return
-            
-            color = snapshot.get("color", "GREEN")
-            if color == "RED":
-                self.view.set_light_color(self.view.red_light, "red")
-                self.view.set_light_color(self.view.green_light, "gray")
-            else:  # GREEN
-                self.view.set_light_color(self.view.red_light, "gray")
-                self.view.set_light_color(self.view.green_light, "green")
-        except Exception as e:
-            self.logger.error(f"Failed to on light tick: {e}")
 
     def init_infor_limit_config(self):
         infor_limit_path = DEFAULT_DIR + "ui/ui_config/infor_limition.json"
@@ -855,11 +788,9 @@ class MainWindowController:
                 channel_idx = self.model.page_index * 2 + i
                 buf = self.model.data_struct.audio_data[channel_idx]
                 pps = self.model.plot_points_section
-                
                 # 优化：直接使用 storage_filled_len 获取有效数据长度，避免遍历整个数组
                 # 原来的 np.all(buf != 0) 和 np.flatnonzero(buf) 需要遍历 2600 万个元素
                 filled_len = int(self.model.storage_filled_len[channel_idx])
-                
                 if filled_len >= pps:
                     # 数据足够，直接取最后 pps 个点
                     y = buf[filled_len - pps:filled_len]
@@ -870,20 +801,20 @@ class MainWindowController:
                 else:
                     # 没有数据
                     y = np.zeros(pps, dtype=buf.dtype)
-                
+
                 wavefrom_data.append(y)
-                
+
                 # 优化：对原始数据降采样后再计算 spectrogram，减少计算开销
                 downsample_factor = 4
                 y_for_spec = y[::downsample_factor] if len(y) > 10000 else y
                 fs_for_spec = self.model.sampling_rate // downsample_factor if len(y) > 10000 else self.model.sampling_rate
                 freqs, times_arr, sxx = spectrogram(y_for_spec, nfft=self.model.nfft, fs=fs_for_spec)
-                
+
                 sxx_log = np.log(np.maximum(sxx, 1e-15) / 1e-11)
                 max_val = np.max(sxx_log)
                 np_sxx_log = (sxx_log / max_val).T if max_val != 0 else sxx_log.T
                 spect_data.append((freqs, times_arr, np_sxx_log))
-            
+
             self.view.wav_or_spect_graph.plot_waveform(wavefrom_data[0], "left", self.model.sampling_rate)
             self.view.wav_or_spect_graph.plot_spectrogram(spect_data[0], "left")
             if not self.is_hide_graph:
@@ -903,10 +834,7 @@ def open_main_window():
     # 保持强引用，避免 controller 被 GC 导致信号失效
     view.rm_model = model
     view.rm_controller = controller
-    
-    # 禁用最大化/恢复按钮
-    # view.setWindowFlags(view.windowFlags() & ~Qt.WindowMaximizeButtonHint)
-    
+
     # 设置窗口为最大化
     view.setWindowState(view.windowState() | Qt.WindowMaximized)
 

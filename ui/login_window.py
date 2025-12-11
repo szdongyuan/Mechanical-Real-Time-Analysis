@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import QApplication, QComboBox, QDialog, QHBoxLayout, QLabe
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QSizePolicy, QVBoxLayout
 
 from base.database.db_manager import DataManage
+from base.get_mac_address import get_mac_address
 from base.log_manager import LogManager
 from consts import error_code, db_consts, ui_style_const
 from consts.running_consts import DEFAULT_DIR
@@ -387,11 +388,6 @@ def encrypt_password(user_name, password):
     enc_pwd = sh.hexdigest()
     return enc_pwd
 
-
-def get_mac_address():
-    mac = uuid.getnode()
-    mac_address = ":".join(("%012x" % mac)[i : i + 2] for i in range(0, 12, 2))
-    return mac_address
 
 
 if __name__ == "__main__":

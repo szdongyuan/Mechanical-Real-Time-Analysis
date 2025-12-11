@@ -57,17 +57,13 @@ LOG_MAPPING = {
 
 MODULES_LOAD = [
     ("加载样式常量", "consts.ui_style_const"),
-    # ("加载模型常量", "consts.model_consts"),
     ("加载路径常量", "consts.running_consts"),
     ("加载日志模块", "base.log_manager"),
     ("加载数据库模块", "base.database.db_manager"),
-    # ("加载AI模型管理模块", "ui.ai.register_ai_model"),
     ("加载校准模块", "ui.calibration_window"),
     ("加载3D模型模块", "ui.show_solid_widget"),
     ("加载错误管理模块", "ui.error_manage_widget"),
     ("加载历史数据模块", "ui.historical_data"),
-    # ("加载录音识别模块", "ui.record_machine_audio_widget"),
     ("加载主界面模块", "ui.main_window"),
-    # ("加载登录模块", "ui.login_window"),
     ("加载完成", None),
 ]

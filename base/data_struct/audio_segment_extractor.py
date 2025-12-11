@@ -60,7 +60,6 @@ class AudioSegmentExtractor:
     def start(self):
         """启动提取器"""
         if self._is_running:
-            # print("AudioSegmentExtractor 已经在运行中")
             return
         
         if self._audio_data_arr is None:
@@ -71,7 +70,6 @@ class AudioSegmentExtractor:
         self._is_running = True
         self._extract_thread = threading.Thread(target=self._extraction_loop, daemon=True)
         self._extract_thread.start()
-        # print(f"AudioSegmentExtractor 已启动：每隔{self.extract_interval}秒提取最后{self.segment_duration}秒的数据")
     
     def stop(self):
         """停止提取器"""
@@ -83,7 +81,6 @@ class AudioSegmentExtractor:
         if self._extract_thread is not None:
             self._extract_thread.join(timeout=2)
             self._extract_thread = None
-        # print("AudioSegmentExtractor 已停止")
     
     def _extraction_loop(self):
         """提取循环（在独立线程中运行）"""
@@ -142,10 +139,6 @@ class AudioSegmentExtractor:
                 # 存储到二维数组对应通道
                 self._extracted_segments[channel_idx] = segment
             self.create_time_list.append(time.time())
-            # print(self.create_time_list)
-            # 打印日志（可选）
-            # current_time = time.strftime("%H:%M:%S", time.localtime())
-            # print(f"[{current_time}] 已提取音频片段：{len(self._audio_data_arr)}个通道，每个{self.segment_duration}秒")
     
     def get_extracted_segments(self) -> Optional[np.ndarray]:
         """
