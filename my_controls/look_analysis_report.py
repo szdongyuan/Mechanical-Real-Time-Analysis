@@ -23,7 +23,7 @@ def open_html_in_default_browser(html_file_path: str) -> bool:
         return webbrowser.open(file_url)
     except Exception:
         # 任意异常都视为打开失败
-        return 1
+        return 2
 
 
 if __name__ == "__main__":
