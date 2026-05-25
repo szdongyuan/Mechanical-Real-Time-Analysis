@@ -182,7 +182,7 @@ qtabwidget_stytle = """
             }
 """
 
-qtextedit_stytle = """                    
+qtextedit_stytle = """
             QTextEdit{
                 background-color: white;
                 font-family: 'SimSun';

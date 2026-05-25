@@ -78,7 +78,7 @@ class MainWindowMode:
         device_name, channels, selected_channels, _, mic_index = load_devices_data()
         change_default_mic(mic_index)
         if device_name and channels and selected_channels:
-            self.select_device_name, self.channels, self.selected_channels= (
+            self.select_device_name, self.channels, self.selected_channels = (
                 device_name,
                 channels,
                 selected_channels,
@@ -96,12 +96,11 @@ class MainWindowMode:
                         self.selected_channels,
                     )
             except Exception:
-                QMessageBox.information("通知", "设置采集设备失败，已使用默认设备")
+                QMessageBox.information(None, "通知", "读取采集设备失败，已使用默认设备")
                 change_default_mic(0)
                 self.select_device_name = "Default Microphone"
                 self.channels = 1
                 self.selected_channels = [0]
-
 
     def set_up_audio_store_zero(self):
         self.data_struct.audio_data = np.zeros((len(self.selected_channels), self.max_points), dtype=np.float16)
@@ -112,7 +111,9 @@ class MainWindowMode:
         self.channel_index = [0] * len(self.selected_channels)
         self.storage_filled_len = [0] * len(self.selected_channels)
 
-    def build_audio_segment_extractor(self, extract_flag, extract_interval=None, segment_duration=None, on_extracted=None):
+    def build_audio_segment_extractor(
+        self, extract_flag, extract_interval=None, segment_duration=None, on_extracted=None
+    ):
         if extract_flag:
             self.segment_extractor = AudioSegmentExtractor(
                 extract_interval=extract_interval,
@@ -120,8 +121,7 @@ class MainWindowMode:
                 sampling_rate=self.sampling_rate,
             )
             self.segment_extractor.set_audio_source(
-                self.data_struct.audio_data,
-                write_index_ref=self.storage_filled_len
+                self.data_struct.audio_data, write_index_ref=self.storage_filled_len
             )
             if on_extracted is not None:
                 self.segment_extractor.set_on_extracted_callback(on_extracted)
@@ -181,10 +181,7 @@ class MainWindowMode:
                 elif write_idx_norm > prev_idx_norm:
                     seg = ring_buffer[prev_idx_norm:write_idx_norm]
                 else:
-                    seg = np.concatenate([
-                        ring_buffer[prev_idx_norm:],
-                        ring_buffer[:write_idx_norm]
-                    ])
+                    seg = np.concatenate([ring_buffer[prev_idx_norm:], ring_buffer[:write_idx_norm]])
                 staged_segments[i] = seg
                 staged_write_indices[i] = new_write_indices[i]
             e2 = getattr(self.data_struct, "epoch", 0)
@@ -206,7 +203,7 @@ class MainWindowMode:
                 free = max(0, store_len - filled)
                 if free > 0:
                     take = min(free, seg.size)
-                    storage_array[filled:filled + take] = seg[:take]
+                    storage_array[filled : filled + take] = seg[:take]
                     filled += take
                     remaining = seg[take:]
                 else:
@@ -237,7 +234,7 @@ class MainWindowMode:
                 filled = int(self.storage_filled_len[ch])
                 take = min(audio_data_duration, filled)
                 if take > 0:
-                    audio_data[ch, -take:] = buf[filled - take: filled]
+                    audio_data[ch, -take:] = buf[filled - take : filled]
         else:
             self.logger.error("save_audio_data failed: countdown_time is out of range")
             return None
@@ -245,7 +242,6 @@ class MainWindowMode:
             audio_data, self.sampling_rate, save_path, self.selected_channels, self.start_record_time
         )
         return self.start_record_time
-
 
     @staticmethod
     def get_model_info(model_name: str):
@@ -297,7 +293,7 @@ class MainWindowController:
         self.model.set_up_audio_store_zero()
         self._init_peak_scatter_channels()
         self._load_analysis_settings()
-        self.view.hide_right_part_widget(len(self.model.selected_channels) < 2 )
+        self.view.hide_right_part_widget(len(self.model.selected_channels) < 2)
         self.change_waveform_title()
 
         self.view.prev_page.setEnabled(False)
@@ -311,7 +307,7 @@ class MainWindowController:
         self.view.record_btn.clicked.connect(self.record_audio)
         self.view.stop_btn.clicked.connect(self.stop_record)
         self.view.select_store_path_action.triggered.connect(self.select_store_path)
-        # self.model.auto_save_count.signal_for_update.connect(self.save_audio_data)
+        self.model.auto_save_count.signal_for_update.connect(self.save_audio_data)
         self.model.auto_write_timer.timeout.connect(self.work_function)
         self.view.device_list_window.device_list_changed.connect(self.change_device)
 
@@ -361,7 +357,6 @@ class MainWindowController:
             if self.view.next_page.isEnabled():
                 self.view.next_page.setEnabled(False)
 
-
     def record_audio(self):
         if not self.view.audio_store_path_lineedit.text():
             self.view.record_btn.setChecked(False)
@@ -385,14 +380,15 @@ class MainWindowController:
             # 重新设置音频源引用，因为 stop_record() 中的 set_up_audio_store_zero()
             # 会创建新的数组，导致 segment_extractor 持有的旧引用失效
             self.model.segment_extractor.set_audio_source(
-                self.model.data_struct.audio_data,
-                write_index_ref=self.model.storage_filled_len
+                self.model.data_struct.audio_data, write_index_ref=self.model.storage_filled_len
             )
             if not self.model.segment_extractor.is_running:
                 self.model.segment_extractor.start()
         # self.start_analysis_process()
 
-        self.model.audio_manager.start_recording(self.model.ctx, self.model.selected_channels, self.model.sampling_rate, self.model.channels)
+        self.model.audio_manager.start_recording(
+            self.model.ctx, self.model.selected_channels, self.model.sampling_rate, self.model.channels
+        )
 
     def stop_record(self):
         self.model.data_struct.record_flag = False
@@ -405,7 +401,6 @@ class MainWindowController:
         if self.model.segment_extractor and self.model.segment_extractor.is_running:
             self.model.segment_extractor.stop()
         self.model.audio_manager.stop_recording()
-
 
     def change_waveform_title(self):
         if len(self.model.selected_channels) - self.model.page_index * 2 > 0:
@@ -500,9 +495,7 @@ class MainWindowController:
         alert_audio_path = os.path.join(DEFAULT_DIR, "alert.wav")
         if os.path.exists(alert_audio_path):
             try:
-                self._alert_audio_data, self._alert_sample_rate = librosa.load(
-                    alert_audio_path, sr=None, mono=False
-                )
+                self._alert_audio_data, self._alert_sample_rate = librosa.load(alert_audio_path, sr=None, mono=False)
                 self.logger.info(f"已加载报警音频: {alert_audio_path}")
             except Exception as exc:
                 self.logger.error(f"加载报警音频失败: {exc}")
@@ -522,7 +515,7 @@ class MainWindowController:
             try:
                 self._alert_player = AudioPlayer(
                     self._alert_audio_data.T if self._alert_audio_data.ndim == 2 else self._alert_audio_data,
-                    sample_rate=self._alert_sample_rate
+                    sample_rate=self._alert_sample_rate,
                 )
                 self._alert_player.start()
             except Exception as exc:
@@ -649,12 +642,7 @@ class MainWindowController:
                     detail = {}
                 channel = detail.get("channel") or self._extract_channel_from_label(label)
                 channel_key = self._normalize_channel_key(channel)
-                peak_value = (
-                    detail.get("max_zscore")
-                    or detail.get("max_flux")
-                    or detail.get("peak_value")
-                    or 0.0
-                )
+                peak_value = detail.get("max_zscore") or detail.get("max_flux") or detail.get("peak_value") or 0.0
                 threshold = detail.get("threshold") or self._peak_threshold
                 parsed.append(
                     {
@@ -777,13 +765,11 @@ class MainWindowController:
 
     def work_function(self):
         self.model.flush_audio_queue_to_array()
-        if len(self.model.selected_channels) > 1:
+        visible_channels = len(self.model.selected_channels) - self.model.page_index * 2
+        if visible_channels > 0:
             wavefrom_data: list = list()
             spect_data: list = list()
-            if self.is_hide_graph:
-                range_num = 1
-            else:
-                range_num = 2
+            range_num = 1 if self.is_hide_graph else min(2, visible_channels)
             for i in range(range_num):
                 channel_idx = self.model.page_index * 2 + i
                 buf = self.model.data_struct.audio_data[channel_idx]
@@ -793,7 +779,7 @@ class MainWindowController:
                 filled_len = int(self.model.storage_filled_len[channel_idx])
                 if filled_len >= pps:
                     # 数据足够，直接取最后 pps 个点
-                    y = buf[filled_len - pps:filled_len]
+                    y = buf[filled_len - pps : filled_len]
                 elif filled_len > 0:
                     # 数据不足，前面补零
                     y = np.zeros(pps, dtype=buf.dtype)
@@ -807,7 +793,9 @@ class MainWindowController:
                 # 优化：对原始数据降采样后再计算 spectrogram，减少计算开销
                 downsample_factor = 4
                 y_for_spec = y[::downsample_factor] if len(y) > 10000 else y
-                fs_for_spec = self.model.sampling_rate // downsample_factor if len(y) > 10000 else self.model.sampling_rate
+                fs_for_spec = (
+                    self.model.sampling_rate // downsample_factor if len(y) > 10000 else self.model.sampling_rate
+                )
                 freqs, times_arr, sxx = spectrogram(y_for_spec, nfft=self.model.nfft, fs=fs_for_spec)
 
                 sxx_log = np.log(np.maximum(sxx, 1e-15) / 1e-11)
