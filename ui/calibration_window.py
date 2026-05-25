@@ -183,7 +183,6 @@ class InputCalibration(QWidget):
                 self.calibration_popup(success_flag=False)
             else:
                 self.calibration_popup(success_flag=True)
-                # self.save_deviation_value_to_text(self.deviation_value)
 
     def calibration_popup(self, success_flag=True):
         cal_msg = QMessageBox(self)
