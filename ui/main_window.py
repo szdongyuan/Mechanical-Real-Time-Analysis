@@ -23,7 +23,7 @@ from base.record_audio import AudioDataManager
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.data_struct.audio_segment_extractor import AudioSegmentExtractor
 from base.sound_device_manager import sd, change_default_mic
-from base.tcp.tcp_client import send_dict
+from base.tcp.tcp_client import send_audio_array, send_dict
 
 from consts import error_code
 from consts.running_consts import DEFAULT_DIR, PEAK_DETECTION_CONFIG_JSON, PEAK_DETECTION_SETTINGS_JSON
@@ -66,6 +66,10 @@ class MainWindowMode:
         self.infor_limit_count = Countdown(self.infor_limit_config.get("duration_min", 100) * 60)
         self.auto_write_timer = QTimer()
         self.auto_write_timer.setInterval(100)
+        self.tcp_audio_interval_sec = 60
+        self.tcp_audio_timer = QTimer()
+        self.tcp_audio_timer.setInterval(self.tcp_audio_interval_sec * 1000)
+        self.tcp_audio_sending = False
 
         self.segment_extractor = None
 
@@ -243,6 +247,21 @@ class MainWindowMode:
         )
         return self.start_record_time
 
+    def build_tcp_audio_snapshot(self, duration_sec: int = 60):
+        num_ch = len(self.selected_channels)
+        samples = int(self.sampling_rate * duration_sec)
+        if num_ch <= 0 or samples <= 0:
+            return None
+        self.flush_audio_queue_to_array()
+        audio_data = np.zeros((num_ch, samples), dtype=np.float32)
+        for ch in range(num_ch):
+            filled = int(self.storage_filled_len[ch])
+            if filled < samples:
+                return None
+            source = self.data_struct.audio_data[ch]
+            audio_data[ch] = source[filled - samples : filled].astype(np.float32, copy=False)
+        return audio_data
+
     @staticmethod
     def get_model_info(model_name: str):
         """
@@ -309,6 +328,7 @@ class MainWindowController:
         self.view.select_store_path_action.triggered.connect(self.select_store_path)
         self.model.auto_save_count.signal_for_update.connect(self.save_audio_data)
         self.model.auto_write_timer.timeout.connect(self.work_function)
+        self.model.tcp_audio_timer.timeout.connect(self.send_tcp_audio_data)
         self.view.device_list_window.device_list_changed.connect(self.change_device)
 
     def change_device(self):
@@ -389,6 +409,7 @@ class MainWindowController:
         self.model.audio_manager.start_recording(
             self.model.ctx, self.model.selected_channels, self.model.sampling_rate, self.model.channels
         )
+        self.start_tcp_audio_timer()
 
     def stop_record(self):
         self.model.data_struct.record_flag = False
@@ -396,11 +417,70 @@ class MainWindowController:
         self.view.audio_store_path_lineedit.setEnabled(True)
         self.model.auto_save_count.count_stop()
         self.model.auto_write_timer.stop()
+        self.stop_tcp_audio_timer()
         self.model.set_up_audio_store_zero()
         self.model.start_record_time = None
         if self.model.segment_extractor and self.model.segment_extractor.is_running:
             self.model.segment_extractor.stop()
         self.model.audio_manager.stop_recording()
+
+    def start_tcp_audio_timer(self):
+        if not self.model.tcp_config.get("enable_audio_tcp", False):
+            return
+        interval_ms = int(self.model.tcp_audio_interval_sec * 1000)
+        self.model.tcp_audio_timer.start(interval_ms)
+        self.logger.info(f"音频 TCP 定时发送已启动，间隔 {self.model.tcp_audio_interval_sec}s")
+
+    def stop_tcp_audio_timer(self):
+        if self.model.tcp_audio_timer.isActive():
+            self.model.tcp_audio_timer.stop()
+            self.logger.info("音频 TCP 定时发送已停止")
+
+    def send_tcp_audio_data(self):
+        if not self.model.tcp_config.get("enable_audio_tcp", False):
+            return
+        if self.model.tcp_audio_sending:
+            self.logger.warning("上一轮音频 TCP 发送尚未完成，跳过本次发送")
+            return
+        audio_data = self.model.build_tcp_audio_snapshot(self.model.tcp_audio_interval_sec)
+        if audio_data is None:
+            self.logger.info(f"音频数据不足 {self.model.tcp_audio_interval_sec} 秒，跳过本次 TCP 发送")
+            return
+
+        cfg = self.model.tcp_config
+        server_host = str(cfg.get("server_ip", cfg.get("ip", "192.168.2.141")) or "192.168.2.141")
+        client_host = str(cfg.get("client_ip", "192.168.2.168") or "192.168.2.168")
+        server_port = int(cfg.get("port", 50000))
+        selected_channels = list(self.model.selected_channels)
+        sample_rate = int(self.model.sampling_rate)
+        duration_sec = int(self.model.tcp_audio_interval_sec)
+        extra_metadata = {
+            "record_start_time": self.model.start_record_time,
+            "device_name": self.model.select_device_name,
+        }
+
+        def _send():
+            try:
+                send_audio_array(
+                    server_host=server_host,
+                    server_port=server_port,
+                    audio_array=audio_data,
+                    sample_rate=sample_rate,
+                    selected_channels=selected_channels,
+                    bind_host=client_host,
+                    timeout_sec=10.0,
+                    wait_response=False,
+                    duration_sec=duration_sec,
+                    extra_metadata=extra_metadata,
+                )
+                self.logger.info(f"音频 TCP 发送成功: {server_host}:{server_port}, shape={audio_data.shape}")
+            except Exception as exc:
+                self.logger.error(f"音频 TCP 发送失败: {exc}")
+            finally:
+                self.model.tcp_audio_sending = False
+
+        self.model.tcp_audio_sending = True
+        threading.Thread(target=_send, daemon=True).start()
 
     def change_waveform_title(self):
         if len(self.model.selected_channels) - self.model.page_index * 2 > 0:
@@ -737,7 +817,7 @@ class MainWindowController:
             "warning_message": "设备异常，请检查设备状态",
         }
         if self.model.tcp_config.get("enable_tcp", False):
-            server_host = str(self.model.tcp_config.get("ip", "127.0.0.1"))
+            server_host = str(self.model.tcp_config.get("server_ip", self.model.tcp_config.get("ip", "192.168.2.141")))
             server_port = int(self.model.tcp_config.get("port", 50000))
             print(f"发送警告到 {server_host}:{server_port}")
             try:
@@ -758,10 +838,38 @@ class MainWindowController:
 
     def init_tcp_config(self):
         tcp_config_path = DEFAULT_DIR + "ui/ui_config/tcp_config.json"
+        default_config = {
+            "enable_tcp": False,
+            "enable_audio_tcp": False,
+            "server_ip": "192.168.2.141",
+            "client_ip": "192.168.2.168",
+            "ip": "192.168.2.141",
+            "port": 50000,
+            "audio_interval_sec": 60,
+        }
         if os.path.exists(tcp_config_path):
             with open(tcp_config_path, "r", encoding="utf-8") as f:
                 tcp_config = json.load(f)
-                self.model.tcp_config = tcp_config
+        else:
+            os.makedirs(os.path.dirname(tcp_config_path), exist_ok=True)
+            tcp_config = default_config.copy()
+            with open(tcp_config_path, "w", encoding="utf-8") as f:
+                json.dump(tcp_config, f, ensure_ascii=False, indent=2)
+        merged_config = default_config.copy()
+        if isinstance(tcp_config, dict):
+            merged_config.update(tcp_config)
+        merged_config["server_ip"] = str(merged_config.get("server_ip", merged_config.get("ip")) or "192.168.2.141")
+        merged_config["client_ip"] = str(merged_config.get("client_ip") or "192.168.2.168")
+        merged_config["ip"] = merged_config["server_ip"]
+        try:
+            interval_sec = int(merged_config.get("audio_interval_sec", 60))
+        except Exception:
+            interval_sec = 60
+        interval_sec = max(1, min(interval_sec, int(self.model.total_display_time)))
+        merged_config["audio_interval_sec"] = interval_sec
+        self.model.tcp_audio_interval_sec = interval_sec
+        self.model.tcp_audio_timer.setInterval(interval_sec * 1000)
+        self.model.tcp_config = merged_config
 
     def work_function(self):
         self.model.flush_audio_queue_to_array()

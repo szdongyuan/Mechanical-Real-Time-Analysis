@@ -2,7 +2,10 @@ import argparse
 import json
 import socket
 import sys
+import time
 from typing import Optional
+
+import numpy as np
 
 from base.log_manager import LogManager
 
@@ -46,6 +49,43 @@ class TcpClient:
         payload_bytes = payload_text.encode("utf-8")
         return self._send_payload(payload_bytes)
 
+    def send_binary_packet(self, metadata: dict, payload_bytes: bytes) -> Optional[bytes]:
+        if not isinstance(metadata, dict):
+            raise TypeError("metadata 必须是 dict")
+        if not isinstance(payload_bytes, (bytes, bytearray, memoryview)):
+            raise TypeError("payload_bytes 必须是 bytes-like")
+        metadata_bytes = json.dumps(metadata, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        packet = len(metadata_bytes).to_bytes(4, byteorder="big", signed=False)
+        packet += metadata_bytes
+        packet += bytes(payload_bytes)
+        return self._send_unframed_payload(packet)
+
+    def send_audio_array(
+        self,
+        audio_array,
+        sample_rate: int,
+        selected_channels: list,
+        *,
+        timestamp: Optional[float] = None,
+        duration_sec: Optional[float] = None,
+        extra_metadata: Optional[dict] = None,
+    ) -> Optional[bytes]:
+        audio_data = np.ascontiguousarray(np.asarray(audio_array, dtype="<f4"))
+        metadata = dict(extra_metadata or {}) if isinstance(extra_metadata, dict) else {}
+        metadata.update({
+            "type": "audio_data",
+            "timestamp": float(timestamp if timestamp is not None else time.time()),
+            "sample_rate": int(sample_rate),
+            "channels": int(audio_data.shape[0]) if audio_data.ndim > 0 else 0,
+            "selected_channels": list(selected_channels or []),
+            "dtype": "float32",
+            "shape": list(audio_data.shape),
+            "byte_order": "little",
+            "duration_sec": float(duration_sec if duration_sec is not None else 0.0),
+            "payload_bytes": int(audio_data.nbytes),
+        })
+        return self.send_binary_packet(metadata, audio_data.tobytes(order="C"))
+
     def _send_payload(self, payload_bytes: bytes) -> Optional[bytes]:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(self.timeout_sec)
@@ -67,6 +107,19 @@ class TcpClient:
             else:
                 sock.sendall(payload_bytes)
 
+            if not self.wait_response:
+                return None
+            return self._read_response(sock)
+
+    def _send_unframed_payload(self, payload_bytes: bytes) -> Optional[bytes]:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(self.timeout_sec)
+            if self.bind_host or self.bind_port:
+                local_host = self.bind_host or "0.0.0.0"
+                local_port = self.bind_port or 0
+                sock.bind((local_host, int(local_port)))
+            sock.connect((self.server_host, int(self.server_port)))
+            sock.sendall(payload_bytes)
             if not self.wait_response:
                 return None
             return self._read_response(sock)
@@ -115,6 +168,37 @@ def send_dict(
         wait_response=wait_response,
     )
     return client.send_dict(data_obj)
+
+
+def send_audio_array(
+    server_host: str,
+    server_port: int,
+    audio_array,
+    sample_rate: int,
+    selected_channels: list,
+    bind_host: Optional[str] = None,
+    bind_port: Optional[int] = None,
+    timeout_sec: float = 10.0,
+    wait_response: bool = False,
+    duration_sec: Optional[float] = None,
+    extra_metadata: Optional[dict] = None,
+) -> Optional[bytes]:
+    client = TcpClient(
+        server_host=server_host,
+        server_port=server_port,
+        bind_host=bind_host,
+        bind_port=bind_port,
+        timeout_sec=timeout_sec,
+        framing="raw",
+        wait_response=wait_response,
+    )
+    return client.send_audio_array(
+        audio_array,
+        sample_rate,
+        selected_channels,
+        duration_sec=duration_sec,
+        extra_metadata=extra_metadata,
+    )
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:

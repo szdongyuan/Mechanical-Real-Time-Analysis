@@ -16,7 +16,12 @@ class WavOrSpectGraph(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.limit_config = None
+        self.limit_config = {
+            "lower": -0.02,
+            "upper": 0.02,
+            "spec_lower": 0.1,
+            "spec_upper": 2.0,
+        }
         self.prev_page = QPushButton("上一页")
         self.next_page = QPushButton("下一页")
         self.next_page.setFixedWidth(150)
@@ -105,8 +110,8 @@ class WavOrSpectGraph(QWidget):
             graph.getAxis('bottom').label.setFont(font)
             graph.getAxis('left').label.setFont(font)
 
-        waveform_graph_left.setYRange(self.limit_config["lower"], self.limit_config["upper"])
-        waveform_graph_right.setYRange(self.limit_config["lower"], self.limit_config["upper"])
+        waveform_graph_left.setYRange(self.current_y_range["lower"], self.current_y_range["upper"])
+        waveform_graph_right.setYRange(self.current_y_range["lower"], self.current_y_range["upper"])
         spect_graph_left = PlotWidget()
         spect_graph_right = PlotWidget()
         for graph in [spect_graph_left, spect_graph_right]:
@@ -392,14 +397,18 @@ class WavOrSpectGraph(QWidget):
     def init_limit_config(self):
         limit_config_path = DEFAULT_DIR + "ui/ui_config/limit.json"
         if os.path.exists(limit_config_path):
-            with open(limit_config_path, "r", encoding="utf-8") as f:
-                limit_config = json.load(f)
-                self.limit_config = limit_config
-                # 初始化当前Y轴范围为配置值
-                self.current_y_range = {
-                    "lower": limit_config.get("lower", -0.02),
-                    "upper": limit_config.get("upper", 0.02)
-                }
+            try:
+                with open(limit_config_path, "r", encoding="utf-8") as f:
+                    limit_config = json.load(f)
+                if isinstance(limit_config, dict):
+                    self.limit_config.update(limit_config)
+            except Exception:
+                pass
+        # 初始化当前Y轴范围为配置值
+        self.current_y_range = {
+            "lower": self.limit_config.get("lower", -0.02),
+            "upper": self.limit_config.get("upper", 0.02)
+        }
 
 
 if __name__ == "__main__":

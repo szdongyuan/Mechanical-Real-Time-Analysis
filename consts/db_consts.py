@@ -16,7 +16,7 @@ JSON_DIR_PATH = DEFAULT_DIR + "ui/ui_config"
 
 DATABASE_PATH = DEFAULT_DIR + "database/audio_data.db"
 
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 48000
 POSITIVE_SAMPLE_LABEL = "OK"
 NEGATIVE_SAMPLE_LABEL = "NG"
 DB_AUDIO_COLUMNS = ["record_id", "file_path", "record_time", "stop_time", "operator", "description"]

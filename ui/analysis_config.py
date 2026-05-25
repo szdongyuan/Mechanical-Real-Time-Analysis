@@ -1,6 +1,14 @@
 import json
 import os
+import sys
+import importlib
 from typing import Any, Dict, Optional, Tuple, List
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+UI_CONFIG_DIR = os.path.join(PROJECT_ROOT, "ui", "ui_config")
+AI_CONFIG_DIR = os.path.join(PROJECT_ROOT, "configs", "ai_model_config")
 
 from PyQt5.QtCore import QRegularExpression, Qt
 from PyQt5.QtGui import QRegularExpressionValidator
@@ -24,7 +32,16 @@ from PyQt5.QtWidgets import (
 from base.log_manager import LogManager
 from consts.db_consts import JSON_DIR_PATH
 from consts.running_consts import DEFAULT_DIR
-from ui.ai.ai_analysis_config_mvc import AIModelStore
+try:
+    AIModelStore = importlib.import_module("ui.ai.ai_analysis_config_mvc").AIModelStore
+except Exception:
+    class AIModelStore:
+        @classmethod
+        def from_json_or_default(cls, models_json_path):
+            return cls()
+
+        def filter_models(self, time_value, sample_rate):
+            return []
 
 
 # ---------------- Models ---------------- #
@@ -33,7 +50,7 @@ from ui.ai.ai_analysis_config_mvc import AIModelStore
 class AnalysisToggleModel:
     def __init__(self, initial: Optional[Dict[str, Any]] = None) -> None:
         self.logger = LogManager.set_log_handler("core")
-        self._config_path = os.path.normpath(os.path.join(DEFAULT_DIR, "ui/ui_config/model_analysis.json"))
+        self._config_path = os.path.normpath(os.path.join(UI_CONFIG_DIR, "model_analysis.json"))
         self.use_ai: bool = False
         self._all_fields: Dict[str, Any] = {}
         self._load()
@@ -73,7 +90,7 @@ class AnalysisToggleModel:
 
 class InforLimitionModel:
     def __init__(self, initial: Optional[Dict[str, Any]] = None) -> None:
-        self._config_path = os.path.join(JSON_DIR_PATH, "infor_limition.json")
+        self._config_path = os.path.join(UI_CONFIG_DIR, "infor_limition.json")
         self.logger = LogManager.set_log_handler("core")
         self.duration_min: int = 10
         self.max_count: int = 100
@@ -92,7 +109,7 @@ class InforLimitionModel:
 
     def _load(self) -> None:
         try:
-            os.makedirs(JSON_DIR_PATH, exist_ok=True)
+            os.makedirs(UI_CONFIG_DIR, exist_ok=True)
             if not os.path.exists(self._config_path):
                 return
             with open(self._config_path, "r", encoding="utf-8") as f:
@@ -109,7 +126,7 @@ class InforLimitionModel:
             "max_count": int(max_count),
             "enable_limit": bool(enable_limit),
         }
-        os.makedirs(JSON_DIR_PATH, exist_ok=True)
+        os.makedirs(UI_CONFIG_DIR, exist_ok=True)
         with open(self._config_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         self.duration_min = data["duration_min"]
@@ -119,20 +136,31 @@ class InforLimitionModel:
 
 class TcpConfigModel:
     def __init__(self, initial: Optional[Dict[str, Any]] = None) -> None:
-        self._config_path = os.path.normpath(os.path.join(DEFAULT_DIR, "ui/ui_config/tcp_config.json"))
+        self._config_path = os.path.normpath(os.path.join(UI_CONFIG_DIR, "tcp_config.json"))
         self.logger = LogManager.set_log_handler("core")
         self.enable_tcp: bool = False
-        self.ip: str = "127.0.0.1"
+        self.enable_audio_tcp: bool = False
+        self.server_ip: str = "192.168.2.206"
+        self.client_ip: str = "192.168.2.168"
+        self.ip: str = self.server_ip
         self.port: int = 50000
+        self.audio_interval_sec: int = 60
         self._load()
         if isinstance(initial, dict):
             try:
                 if "enable_tcp" in initial:
                     self.enable_tcp = bool(initial["enable_tcp"])
-                if "ip" in initial:
-                    self.ip = str(initial["ip"]) or "127.0.0.1"
+                if "enable_audio_tcp" in initial:
+                    self.enable_audio_tcp = bool(initial["enable_audio_tcp"])
+                if "server_ip" in initial or "ip" in initial:
+                    self.server_ip = str(initial.get("server_ip", initial.get("ip"))) or self.server_ip
+                if "client_ip" in initial:
+                    self.client_ip = str(initial["client_ip"]) or self.client_ip
                 if "port" in initial:
                     self.port = int(initial["port"])
+                if "audio_interval_sec" in initial:
+                    self.audio_interval_sec = int(initial["audio_interval_sec"])
+                self.ip = self.server_ip
             except Exception as e:
                 self.logger.error(f"Failed to load tcp config: {e}")
 
@@ -144,26 +172,52 @@ class TcpConfigModel:
             with open(self._config_path, "r", encoding="utf-8") as f:
                 data: Dict[str, Any] = json.load(f)
             self.enable_tcp = bool(data.get("enable_tcp", self.enable_tcp))
-            self.ip = str(data.get("ip", self.ip)) or "127.0.0.1"
+            self.enable_audio_tcp = bool(data.get("enable_audio_tcp", self.enable_audio_tcp))
+            self.server_ip = str(data.get("server_ip", data.get("ip", self.server_ip))) or self.server_ip
+            self.client_ip = str(data.get("client_ip", self.client_ip)) or self.client_ip
+            self.ip = self.server_ip
             try:
                 self.port = int(data.get("port", self.port))
+            except Exception:
+                pass
+            try:
+                self.audio_interval_sec = int(data.get("audio_interval_sec", self.audio_interval_sec))
             except Exception:
                 pass
         except Exception as e:
             self.logger.error(f"Failed to load tcp config: {e}")
 
-    def save(self, enable_tcp: bool, ip: str, port: int) -> None:
+    def save(
+        self,
+        enable_tcp: bool,
+        server_ip: str,
+        port: int,
+        client_ip: str = "",
+        enable_audio_tcp: bool = False,
+        audio_interval_sec: int = 60,
+    ) -> None:
+        server_ip = str(server_ip).strip() or "192.168.2.141"
+        client_ip = str(client_ip).strip() or "192.168.2.168"
+        audio_interval_sec = max(1, min(int(audio_interval_sec), 600))
         data = {
             "enable_tcp": bool(enable_tcp),
-            "ip": str(ip).strip() or "127.0.0.1",
+            "enable_audio_tcp": bool(enable_audio_tcp),
+            "server_ip": server_ip,
+            "client_ip": client_ip,
+            "ip": server_ip,
             "port": int(port),
+            "audio_interval_sec": audio_interval_sec,
         }
         os.makedirs(os.path.dirname(self._config_path), exist_ok=True)
         with open(self._config_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         self.enable_tcp = data["enable_tcp"]
+        self.enable_audio_tcp = data["enable_audio_tcp"]
+        self.server_ip = data["server_ip"]
+        self.client_ip = data["client_ip"]
         self.ip = data["ip"]
         self.port = data["port"]
+        self.audio_interval_sec = data["audio_interval_sec"]
 
 
 # ---------------- View ---------------- #
@@ -203,8 +257,11 @@ class AnalysisConfigView(QDialog):
 
         # TCP
         self.checkbox_enable_tcp = QCheckBox("启用 TCP")
+        self.checkbox_enable_audio_tcp = QCheckBox("启用音频 TCP")
         self.line_ip = QLineEdit()
-        self.line_ip.setPlaceholderText("127.0.0.1")
+        self.line_ip.setPlaceholderText("192.168.2.141")
+        self.line_client_ip = QLineEdit()
+        self.line_client_ip.setPlaceholderText("192.168.2.168")
         ip_regex = QRegularExpression(
             r"^(25[0-5]|2[0-4]\d|1?\d?\d)\."
             r"(25[0-5]|2[0-4]\d|1?\d?\d)\."
@@ -212,9 +269,14 @@ class AnalysisConfigView(QDialog):
             r"(25[0-5]|2[0-4]\d|1?\d?\d)$"
         )
         self.line_ip.setValidator(QRegularExpressionValidator(ip_regex, self))
+        self.line_client_ip.setValidator(QRegularExpressionValidator(ip_regex, self))
         self.spin_port = QSpinBox()
         self.spin_port.setRange(49152, 65535)
         self.spin_port.setValue(50000)
+        self.spin_audio_interval_sec = QSpinBox()
+        self.spin_audio_interval_sec.setRange(1, 600)
+        self.spin_audio_interval_sec.setValue(60)
+        self.spin_audio_interval_sec.setSuffix(" s")
 
         # 按钮
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -237,8 +299,11 @@ class AnalysisConfigView(QDialog):
         form.addRow(QLabel("最大数量"), self.spin_max_count)
         # TCP：先放启用开关，再放输入项
         form.addRow(self.checkbox_enable_tcp)
-        form.addRow(QLabel("IP 地 址"), self.line_ip)
+        form.addRow(self.checkbox_enable_audio_tcp)
+        form.addRow(QLabel("服务端 IP"), self.line_ip)
+        form.addRow(QLabel("客户端 IP"), self.line_client_ip)
         form.addRow(QLabel("端 口 号"), self.spin_port)
+        form.addRow(QLabel("音频发送间隔"), self.spin_audio_interval_sec)
 
         self.btn_manage_models = QPushButton("模型管理")
         bottom_layout = QHBoxLayout()
@@ -259,7 +324,9 @@ class AnalysisConfigView(QDialog):
 
     def set_tcp_inputs_enabled(self, enabled: bool) -> None:
         self.line_ip.setEnabled(bool(enabled))
+        self.line_client_ip.setEnabled(bool(enabled))
         self.spin_port.setEnabled(bool(enabled))
+        self.spin_audio_interval_sec.setEnabled(bool(enabled))
 
     def set_ai_controls_enabled(self, enabled: bool) -> None:
         self.spin_time.setEnabled(bool(enabled))
@@ -313,7 +380,7 @@ class AnalysisConfigController:
         self.tcp_model = tcp_model
         self.view = view
         self._result_values: Optional[Dict[str, Any]] = None
-        self._models_json_path = models_json_path or os.path.normpath(os.path.join(DEFAULT_DIR, "ui/ui_config/models.json"))
+        self._models_json_path = models_json_path or os.path.normpath(os.path.join(UI_CONFIG_DIR, "models.json"))
         self._forced_sample_rate = forced_sample_rate
         self._model_store = AIModelStore.from_json_or_default(self._models_json_path)
 
@@ -347,17 +414,24 @@ class AnalysisConfigController:
         self.view.spin_max_count.setValue(int(self.limit_model.max_count))
         # TCP
         self.view.checkbox_enable_tcp.setChecked(bool(self.tcp_model.enable_tcp))
-        self.view.line_ip.setText(str(self.tcp_model.ip) or "127.0.0.1")
+        self.view.checkbox_enable_audio_tcp.setChecked(bool(self.tcp_model.enable_audio_tcp))
+        self.view.line_ip.setText(str(self.tcp_model.server_ip) or "192.168.2.141")
+        self.view.line_client_ip.setText(str(self.tcp_model.client_ip) or "192.168.2.168")
         try:
             self.view.spin_port.setValue(int(self.tcp_model.port))
         except Exception as e:
             self.view.spin_port.setValue(50000)
+        try:
+            self.view.spin_audio_interval_sec.setValue(int(self.tcp_model.audio_interval_sec))
+        except Exception as e:
+            self.view.spin_audio_interval_sec.setValue(60)
 
     def _bind(self) -> None:
         self.view.checkbox_use_ai.toggled.connect(self.on_toggle_use_ai)
         self.view.spin_time.valueChanged.connect(self._refresh_model_list)
         self.view.checkbox_enable_limit.toggled.connect(self.on_toggle_enable_limit)
         self.view.checkbox_enable_tcp.toggled.connect(self.on_toggle_enable_tcp)
+        self.view.checkbox_enable_audio_tcp.toggled.connect(self.on_toggle_enable_tcp)
         self.view.button_box.accepted.connect(self.on_confirm)
         self.view.button_box.rejected.connect(self.on_cancel)
         self.view.btn_manage_models.clicked.connect(self.on_manage_models)
@@ -369,6 +443,7 @@ class AnalysisConfigController:
         use_ai = bool(self.view.checkbox_use_ai.isChecked())
         enable_limit = bool(self.view.checkbox_enable_limit.isChecked()) if use_ai else False
         enable_tcp = bool(self.view.checkbox_enable_tcp.isChecked()) if enable_limit else False
+        enable_audio_tcp = bool(self.view.checkbox_enable_audio_tcp.isChecked())
 
         # 自动纠正勾选状态链
         if not use_ai and self.view.checkbox_enable_limit.isChecked():
@@ -386,7 +461,8 @@ class AnalysisConfigController:
         self.view.set_infor_inputs_enabled(use_ai and bool(self.view.checkbox_enable_limit.isChecked()))
 
         self.view.checkbox_enable_tcp.setEnabled(use_ai and bool(self.view.checkbox_enable_limit.isChecked()))
-        self.view.set_tcp_inputs_enabled(use_ai and bool(self.view.checkbox_enable_limit.isChecked()) and bool(self.view.checkbox_enable_tcp.isChecked()))
+        self.view.checkbox_enable_audio_tcp.setEnabled(True)
+        self.view.set_tcp_inputs_enabled(enable_tcp or enable_audio_tcp)
         self._update_ok_enabled()
 
     def on_toggle_use_ai(self, checked: bool) -> None:
@@ -404,25 +480,38 @@ class AnalysisConfigController:
         self._apply_dependencies()
 
     def _validate(self) -> Tuple[bool, str]:
-        # 仅当启用 TCP 时进行校验
-        if self.view.checkbox_enable_tcp.isChecked():
-            ip = self.view.line_ip.text().strip()
-            parts = ip.split(".")
-            if len(parts) != 4:
-                return False, "IP 地址格式不正确"
-            try:
-                for p in parts:
-                    v = int(p)
-                    if v < 0 or v > 255:
-                        return False, "IP 地址每段应在 0-255 之间"
-            except Exception:
-                return False, "IP 地址格式不正确"
+        # 仅当启用告警 TCP 或音频 TCP 时进行校验
+        if self.view.checkbox_enable_tcp.isChecked() or self.view.checkbox_enable_audio_tcp.isChecked():
+            ok, msg = self._validate_ip(self.view.line_ip.text().strip(), "服务端 IP")
+            if not ok:
+                return ok, msg
+            if self.view.checkbox_enable_audio_tcp.isChecked():
+                ok, msg = self._validate_ip(self.view.line_client_ip.text().strip(), "客户端 IP")
+                if not ok:
+                    return ok, msg
             port = int(self.view.spin_port.value())
             if port < 49152 or port > 65535:
                 return False, "端口号应在 49152-65535 范围内"
+            interval_sec = int(self.view.spin_audio_interval_sec.value())
+            if interval_sec < 1 or interval_sec > 600:
+                return False, "音频发送间隔应在 1-600 秒之间"
         if self.view.checkbox_use_ai.isChecked():
             if self.view.combo_model.count() == 0 or self.view.combo_model.itemText(0) == "无可用模型":
                 return False, "启用 AI 时需要可用的模型"
+        return True, ""
+
+    @staticmethod
+    def _validate_ip(ip: str, label: str) -> Tuple[bool, str]:
+        parts = ip.split(".")
+        if len(parts) != 4:
+            return False, f"{label}格式不正确"
+        try:
+            for p in parts:
+                v = int(p)
+                if v < 0 or v > 255:
+                    return False, f"{label}每段应在 0-255 之间"
+        except Exception:
+            return False, f"{label}格式不正确"
         return True, ""
 
     def on_confirm(self) -> None:
@@ -438,6 +527,7 @@ class AnalysisConfigController:
         interval_value = float(self.view.get_analysis_interval())
         enable_limit = bool(self.view.checkbox_enable_limit.isChecked())
         enable_tcp = bool(self.view.checkbox_enable_tcp.isChecked())
+        enable_audio_tcp = bool(self.view.checkbox_enable_audio_tcp.isChecked())
 
         self.analysis_model.save(
             use_ai=use_ai,
@@ -453,8 +543,11 @@ class AnalysisConfigController:
         )
         self.tcp_model.save(
             enable_tcp=enable_tcp,
-            ip=self.view.line_ip.text().strip() or "127.0.0.1",
+            server_ip=self.view.line_ip.text().strip() or "192.168.2.141",
             port=int(self.view.spin_port.value()),
+            client_ip=self.view.line_client_ip.text().strip() or "192.168.2.168",
+            enable_audio_tcp=enable_audio_tcp,
+            audio_interval_sec=int(self.view.spin_audio_interval_sec.value()),
         )
 
         self._result_values = {
@@ -473,7 +566,11 @@ class AnalysisConfigController:
             "tcp_config": {
                 "enable_tcp": self.tcp_model.enable_tcp,
                 "ip": self.tcp_model.ip,
+                "server_ip": self.tcp_model.server_ip,
+                "client_ip": self.tcp_model.client_ip,
+                "enable_audio_tcp": self.tcp_model.enable_audio_tcp,
                 "port": self.tcp_model.port,
+                "audio_interval_sec": self.tcp_model.audio_interval_sec,
             },
         }
         self.view.accept()
@@ -519,7 +616,7 @@ class AnalysisConfigController:
     def on_manage_models(self) -> None:
         # 延迟导入以避免循环依赖
         try:
-            from ui.ai.register_ai_model import ModelManagerApp
+            ModelManagerApp = importlib.import_module("ui.ai.register_ai_model").ModelManagerApp
         except Exception:
             ModelManagerApp = None
         if ModelManagerApp is None:

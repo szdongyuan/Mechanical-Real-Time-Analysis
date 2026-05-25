@@ -1,0 +1,7 @@
+{
+    "upper": 0.02,
+    "lower": -0.02,
+    "spec_upper": 1.1,
+    "spec_lower": 0.0,
+    "grad_diff": true
+}

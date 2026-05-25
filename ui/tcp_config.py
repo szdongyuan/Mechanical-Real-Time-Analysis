@@ -1,6 +1,12 @@
 import json
 import os
+import sys
 from typing import Optional, Tuple, Dict
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+UI_CONFIG_DIR = os.path.join(PROJECT_ROOT, "ui", "ui_config")
 
 from PyQt5.QtCore import QRegularExpression
 from PyQt5.QtGui import QRegularExpressionValidator
@@ -16,9 +22,6 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from consts.running_consts import DEFAULT_DIR
-
-
 TCP_CONFIG_JSON_REL = "ui/ui_config/tcp_config.json"
 
 
@@ -26,14 +29,18 @@ class TcpConfigDialog(QDialog):
     def __init__(self, parent: Optional[QWidget] = None, initial: Optional[Dict] = None):
         super().__init__(parent)
         self.setWindowTitle("TCP 配置")
-        self._config_path = os.path.normpath(os.path.join(DEFAULT_DIR, TCP_CONFIG_JSON_REL))
+        self._config_path = os.path.normpath(os.path.join(UI_CONFIG_DIR, "tcp_config.json"))
 
         self.enable_checkbox = QCheckBox("启用 TCP")
+        self.enable_audio_checkbox = QCheckBox("启用音频 TCP")
         self.ip_edit = QLineEdit()
+        self.client_ip_edit = QLineEdit()
         self.port_spin = QSpinBox()
+        self.audio_interval_spin = QSpinBox()
 
         # IP 输入：默认 127.0.0.1，正则约束每段 0-255
-        self.ip_edit.setPlaceholderText("127.0.0.1")
+        self.ip_edit.setPlaceholderText("192.168.2.141")
+        self.client_ip_edit.setPlaceholderText("192.168.2.168")
         ip_regex = QRegularExpression(
             r"^(25[0-5]|2[0-4]\d|1?\d?\d)\."
             r"(25[0-5]|2[0-4]\d|1?\d?\d)\."
@@ -41,29 +48,45 @@ class TcpConfigDialog(QDialog):
             r"(25[0-5]|2[0-4]\d|1?\d?\d)$"
         )
         self.ip_edit.setValidator(QRegularExpressionValidator(ip_regex, self))
+        self.client_ip_edit.setValidator(QRegularExpressionValidator(ip_regex, self))
 
         # 端口范围：49152-65535，默认 50000
         self.port_spin.setRange(49152, 65535)
         self.port_spin.setValue(50000)
+        self.audio_interval_spin.setRange(1, 600)
+        self.audio_interval_spin.setValue(60)
+        self.audio_interval_spin.setSuffix(" s")
 
         # 默认值
         self.enable_checkbox.setChecked(False)
-        self.ip_edit.setText("127.0.0.1")
+        self.enable_audio_checkbox.setChecked(False)
+        self.ip_edit.setText("192.168.2.141")
+        self.client_ip_edit.setText("192.168.2.168")
 
         # 从 initial 或已有配置加载
         cfg = self._load_initial(initial)
         self.enable_checkbox.setChecked(bool(cfg.get("enable_tcp", False)))
-        self.ip_edit.setText(str(cfg.get("ip", "127.0.0.1")) or "127.0.0.1")
+        self.enable_audio_checkbox.setChecked(bool(cfg.get("enable_audio_tcp", False)))
+        server_ip = str(cfg.get("server_ip", cfg.get("ip", "192.168.2.141"))) or "192.168.2.141"
+        self.ip_edit.setText(server_ip)
+        self.client_ip_edit.setText(str(cfg.get("client_ip", "192.168.2.168")) or "192.168.2.168")
         try:
             self.port_spin.setValue(int(cfg.get("port", 50000)))
         except Exception:
             self.port_spin.setValue(50000)
+        try:
+            self.audio_interval_spin.setValue(int(cfg.get("audio_interval_sec", 60)))
+        except Exception:
+            self.audio_interval_spin.setValue(60)
 
         # 表单布局
         form = QFormLayout()
         form.addRow(self.enable_checkbox)
-        form.addRow("IP 地址", self.ip_edit)
+        form.addRow(self.enable_audio_checkbox)
+        form.addRow("服务端 IP", self.ip_edit)
+        form.addRow("客户端 IP", self.client_ip_edit)
         form.addRow("端口号", self.port_spin)
+        form.addRow("音频发送间隔", self.audio_interval_spin)
 
         # 按钮
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
@@ -86,23 +109,27 @@ class TcpConfigDialog(QDialog):
             return {}
 
     def _validate(self) -> Tuple[bool, str]:
-        ip = self.ip_edit.text().strip()
-        if not ip:
-            return False, "IP 地址不能为空"
-        # 运行时再校验一次
-        parts = ip.split(".")
-        if len(parts) != 4:
-            return False, "IP 地址格式不正确"
-        try:
-            for p in parts:
-                v = int(p)
-                if v < 0 or v > 255:
-                    return False, "IP 地址每段应在 0-255 之间"
-        except Exception:
-            return False, "IP 地址格式不正确"
+        for label, edit in (("服务端 IP", self.ip_edit), ("客户端 IP", self.client_ip_edit)):
+            ip = edit.text().strip()
+            if not ip:
+                return False, f"{label}不能为空"
+            # 运行时再校验一次
+            parts = ip.split(".")
+            if len(parts) != 4:
+                return False, f"{label}格式不正确"
+            try:
+                for p in parts:
+                    v = int(p)
+                    if v < 0 or v > 255:
+                        return False, f"{label}每段应在 0-255 之间"
+            except Exception:
+                return False, f"{label}格式不正确"
         port = int(self.port_spin.value())
         if port < 49152 or port > 65535:
             return False, "端口号应在 49152-65535 范围内"
+        audio_interval_sec = int(self.audio_interval_spin.value())
+        if audio_interval_sec < 1 or audio_interval_sec > 600:
+            return False, "音频发送间隔应在 1-600 秒之间"
         return True, ""
 
     def _on_accept(self):
@@ -112,8 +139,12 @@ class TcpConfigDialog(QDialog):
             return
         cfg = {
             "enable_tcp": bool(self.enable_checkbox.isChecked()),
+            "enable_audio_tcp": bool(self.enable_audio_checkbox.isChecked()),
+            "server_ip": self.ip_edit.text().strip(),
+            "client_ip": self.client_ip_edit.text().strip(),
             "ip": self.ip_edit.text().strip(),
             "port": int(self.port_spin.value()),
+            "audio_interval_sec": int(self.audio_interval_spin.value()),
         }
         # 保存到 json
         try:
@@ -130,8 +161,12 @@ class TcpConfigDialog(QDialog):
     def get_config(self) -> Dict:
         return getattr(self, "_result_config", {
             "enable_tcp": bool(self.enable_checkbox.isChecked()),
-            "ip": self.ip_edit.text().strip() or "127.0.0.1",
+            "enable_audio_tcp": bool(self.enable_audio_checkbox.isChecked()),
+            "server_ip": self.ip_edit.text().strip() or "192.168.2.141",
+            "client_ip": self.client_ip_edit.text().strip() or "192.168.2.168",
+            "ip": self.ip_edit.text().strip() or "192.168.2.141",
             "port": int(self.port_spin.value()),
+            "audio_interval_sec": int(self.audio_interval_spin.value()),
         })
 
 

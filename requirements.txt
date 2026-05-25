@@ -1,0 +1,12 @@
+PyQt5
+PyQt5-Qt5
+PyQt5-sip
+numpy
+scipy
+librosa
+sounddevice
+pyqtgraph
+PyOpenGL
+PyYAML
+concurrent-log-handler
+gmsh

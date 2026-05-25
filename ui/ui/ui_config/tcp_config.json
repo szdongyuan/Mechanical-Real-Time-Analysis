@@ -1,0 +1,9 @@
+{
+  "enable_tcp": false,
+  "enable_audio_tcp": true,
+  "server_ip": "192.168.2.206",
+  "client_ip": "192.168.2.168",
+  "ip": "192.168.2.206",
+  "port": 50000,
+  "audio_interval_sec": 10
+}
