@@ -4,8 +4,7 @@ import sys
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 
-# DEFAULT_DIR = os.path.split(os.path.realpath(__file__))[0].replace("\\", "/") + "/../"
-DEFAULT_DIR = os.path.dirname(os.path.realpath(sys.argv[0])).replace("\\", "/") + "/"
+from consts.running_consts import DEFAULT_DIR
 
 STORED_SAMPLE_PATH = DEFAULT_DIR + "audio_data/stored_sample"
 STORED_RECORDED_PATH = DEFAULT_DIR + "audio_data/stored_data"

@@ -11,6 +11,30 @@ from base.log_manager import LogManager
 
 logger = LogManager.set_log_handler("core")
 
+
+def estimate_tcp_send_timeout_sec(payload_bytes: int, *, min_sec: float = 30.0) -> float:
+    """按 payload 大小估算发送超时，避免大包在慢链路上误报 timed out。"""
+    nbytes = max(0, int(payload_bytes))
+    # 按最低 256 KB/s 估算传输时间，并预留连接建立余量
+    transfer_sec = nbytes / (256 * 1024) if nbytes > 0 else 0.0
+    return max(float(min_sec), 15.0 + transfer_sec)
+
+
+def _convert_audio_payload(audio_array, sample_bit_depth: int):
+    bit_depth = int(sample_bit_depth)
+    source = np.asarray(audio_array, dtype=np.float32)
+    if bit_depth == 16:
+        audio_data = np.ascontiguousarray(np.clip(source, -1.0, 1.0) * np.iinfo(np.int16).max, dtype="<i2")
+        return audio_data, "int16", "little"
+    if bit_depth == 8:
+        audio_data = np.ascontiguousarray(np.clip(source, -1.0, 1.0) * np.iinfo(np.int8).max, dtype=np.int8)
+        return audio_data, "int8", "not_applicable"
+    if bit_depth == 32:
+        audio_data = np.ascontiguousarray(source.astype("<f4", copy=False))
+        return audio_data, "float32", "little"
+    raise ValueError(f"不支持的 TCP 音频位深度: {sample_bit_depth}，仅支持 8/16/32")
+
+
 class TcpClient:
     """
     简单的 TCP 客户端封装：
@@ -69,8 +93,9 @@ class TcpClient:
         timestamp: Optional[float] = None,
         duration_sec: Optional[float] = None,
         extra_metadata: Optional[dict] = None,
+        sample_bit_depth: int = 32,
     ) -> Optional[bytes]:
-        audio_data = np.ascontiguousarray(np.asarray(audio_array, dtype="<f4"))
+        audio_data, dtype_name, byte_order = _convert_audio_payload(audio_array, sample_bit_depth)
         metadata = dict(extra_metadata or {}) if isinstance(extra_metadata, dict) else {}
         metadata.update({
             "type": "audio_data",
@@ -78,13 +103,22 @@ class TcpClient:
             "sample_rate": int(sample_rate),
             "channels": int(audio_data.shape[0]) if audio_data.ndim > 0 else 0,
             "selected_channels": list(selected_channels or []),
-            "dtype": "float32",
+            "dtype": dtype_name,
             "shape": list(audio_data.shape),
-            "byte_order": "little",
+            "byte_order": byte_order,
             "duration_sec": float(duration_sec if duration_sec is not None else 0.0),
             "payload_bytes": int(audio_data.nbytes),
         })
         return self.send_binary_packet(metadata, audio_data.tobytes(order="C"))
+
+    def _log_send_complete(self, sock: socket.socket, nbytes: int, *, packet_type: str = "payload") -> None:
+        local_host, local_port = sock.getsockname()
+        msg = (
+            f"TCP 发送完成并已关闭连接: {local_host}:{local_port} -> "
+            f"{self.server_host}:{self.server_port}, {packet_type}={nbytes} 字节"
+        )
+        logger.info(msg)
+        print(msg)
 
     def _send_payload(self, payload_bytes: bytes) -> Optional[bytes]:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -95,21 +129,49 @@ class TcpClient:
                 local_port = self.bind_port or 0
                 sock.bind((local_host, int(local_port)))
 
-            # 连接服务端
-            sock.connect((self.server_host, int(self.server_port)))
+            self._connect(sock)
 
             # 发送数据（封装）
             if self.framing == "length":
                 length_prefix = len(payload_bytes).to_bytes(4, byteorder="big", signed=False)
-                sock.sendall(length_prefix + payload_bytes)
+                on_wire = length_prefix + payload_bytes
+                self._send_all(sock, on_wire)
+                sent_bytes = len(on_wire)
             elif self.framing == "newline":
-                sock.sendall(payload_bytes + b"\n")
+                on_wire = payload_bytes + b"\n"
+                self._send_all(sock, on_wire)
+                sent_bytes = len(on_wire)
             else:
-                sock.sendall(payload_bytes)
+                self._send_all(sock, payload_bytes)
+                sent_bytes = len(payload_bytes)
 
             if not self.wait_response:
+                self._log_send_complete(sock, sent_bytes, packet_type=f"json({self.framing})")
                 return None
-            return self._read_response(sock)
+            resp = self._read_response(sock)
+            self._log_send_complete(sock, sent_bytes, packet_type=f"json({self.framing})")
+            return resp
+
+    def _connect(self, sock: socket.socket) -> None:
+        target = f"{self.server_host}:{self.server_port}"
+        try:
+            sock.connect((self.server_host, int(self.server_port)))
+        except socket.timeout as exc:
+            raise TimeoutError(
+                f"连接 {target} 超时（{self.timeout_sec:.0f}s），"
+                f"请确认 Server 已在 {target} 监听且网络/防火墙可达"
+            ) from exc
+        except OSError as exc:
+            raise ConnectionError(f"连接 {target} 失败: {exc}") from exc
+
+    def _send_all(self, sock: socket.socket, payload_bytes: bytes) -> None:
+        try:
+            sock.sendall(payload_bytes)
+        except socket.timeout as exc:
+            raise TimeoutError(
+                f"向 {self.server_host}:{self.server_port} 发送 {len(payload_bytes)} 字节超时"
+                f"（{self.timeout_sec:.0f}s），请确认 Server 端正在 recv 读取完整数据包"
+            ) from exc
 
     def _send_unframed_payload(self, payload_bytes: bytes) -> Optional[bytes]:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -118,11 +180,15 @@ class TcpClient:
                 local_host = self.bind_host or "0.0.0.0"
                 local_port = self.bind_port or 0
                 sock.bind((local_host, int(local_port)))
-            sock.connect((self.server_host, int(self.server_port)))
-            sock.sendall(payload_bytes)
+            self._connect(sock)
+            self._send_all(sock, payload_bytes)
+            sent_bytes = len(payload_bytes)
             if not self.wait_response:
+                self._log_send_complete(sock, sent_bytes, packet_type="binary_packet")
                 return None
-            return self._read_response(sock)
+            resp = self._read_response(sock)
+            self._log_send_complete(sock, sent_bytes, packet_type="binary_packet")
+            return resp
 
     def _read_response(self, sock: socket.socket) -> bytes:
         # 简单读取响应：优先按行读取（遇到换行停止），否则读到连接关闭
@@ -182,6 +248,7 @@ def send_audio_array(
     wait_response: bool = False,
     duration_sec: Optional[float] = None,
     extra_metadata: Optional[dict] = None,
+    sample_bit_depth: int = 32,
 ) -> Optional[bytes]:
     client = TcpClient(
         server_host=server_host,
@@ -198,6 +265,7 @@ def send_audio_array(
         selected_channels,
         duration_sec=duration_sec,
         extra_metadata=extra_metadata,
+        sample_bit_depth=sample_bit_depth,
     )
 
 

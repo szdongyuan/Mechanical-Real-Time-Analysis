@@ -1,1 +1,6 @@
 ui\ui_config
+build/
+dist/
+*.spec.bak
+wav/
+*.wav

@@ -4,7 +4,9 @@ import sys
 import importlib
 from typing import Any, Dict, Optional, Tuple, List
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from consts.running_consts import DEFAULT_DIR
+
+PROJECT_ROOT = DEFAULT_DIR.rstrip("/\\")
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 UI_CONFIG_DIR = os.path.join(PROJECT_ROOT, "ui", "ui_config")
@@ -31,7 +33,6 @@ from PyQt5.QtWidgets import (
 
 from base.log_manager import LogManager
 from consts.db_consts import JSON_DIR_PATH
-from consts.running_consts import DEFAULT_DIR
 try:
     AIModelStore = importlib.import_module("ui.ai.ai_analysis_config_mvc").AIModelStore
 except Exception:
@@ -145,6 +146,8 @@ class TcpConfigModel:
         self.ip: str = self.server_ip
         self.port: int = 50000
         self.audio_interval_sec: int = 60
+        self.tcp_audio_sample_rate: int = 16000
+        self.tcp_audio_bit_depth: int = 16
         self._load()
         if isinstance(initial, dict):
             try:
@@ -160,6 +163,10 @@ class TcpConfigModel:
                     self.port = int(initial["port"])
                 if "audio_interval_sec" in initial:
                     self.audio_interval_sec = int(initial["audio_interval_sec"])
+                if "tcp_audio_sample_rate" in initial:
+                    self.tcp_audio_sample_rate = int(initial["tcp_audio_sample_rate"])
+                if "tcp_audio_bit_depth" in initial:
+                    self.tcp_audio_bit_depth = int(initial["tcp_audio_bit_depth"])
                 self.ip = self.server_ip
             except Exception as e:
                 self.logger.error(f"Failed to load tcp config: {e}")
@@ -184,6 +191,14 @@ class TcpConfigModel:
                 self.audio_interval_sec = int(data.get("audio_interval_sec", self.audio_interval_sec))
             except Exception:
                 pass
+            try:
+                self.tcp_audio_sample_rate = int(data.get("tcp_audio_sample_rate", self.tcp_audio_sample_rate))
+            except Exception:
+                pass
+            try:
+                self.tcp_audio_bit_depth = int(data.get("tcp_audio_bit_depth", self.tcp_audio_bit_depth))
+            except Exception:
+                pass
         except Exception as e:
             self.logger.error(f"Failed to load tcp config: {e}")
 
@@ -195,10 +210,16 @@ class TcpConfigModel:
         client_ip: str = "",
         enable_audio_tcp: bool = False,
         audio_interval_sec: int = 60,
+        tcp_audio_sample_rate: int = 16000,
+        tcp_audio_bit_depth: int = 16,
     ) -> None:
         server_ip = str(server_ip).strip() or "192.168.2.141"
         client_ip = str(client_ip).strip() or "192.168.2.168"
         audio_interval_sec = max(1, min(int(audio_interval_sec), 600))
+        tcp_audio_sample_rate = max(1000, min(int(tcp_audio_sample_rate), 192000))
+        tcp_audio_bit_depth = int(tcp_audio_bit_depth)
+        if tcp_audio_bit_depth not in (8, 16, 32):
+            tcp_audio_bit_depth = 16
         data = {
             "enable_tcp": bool(enable_tcp),
             "enable_audio_tcp": bool(enable_audio_tcp),
@@ -207,6 +228,8 @@ class TcpConfigModel:
             "ip": server_ip,
             "port": int(port),
             "audio_interval_sec": audio_interval_sec,
+            "tcp_audio_sample_rate": tcp_audio_sample_rate,
+            "tcp_audio_bit_depth": tcp_audio_bit_depth,
         }
         os.makedirs(os.path.dirname(self._config_path), exist_ok=True)
         with open(self._config_path, "w", encoding="utf-8") as f:
@@ -218,6 +241,8 @@ class TcpConfigModel:
         self.ip = data["ip"]
         self.port = data["port"]
         self.audio_interval_sec = data["audio_interval_sec"]
+        self.tcp_audio_sample_rate = data["tcp_audio_sample_rate"]
+        self.tcp_audio_bit_depth = data["tcp_audio_bit_depth"]
 
 
 # ---------------- View ---------------- #
@@ -277,6 +302,15 @@ class AnalysisConfigView(QDialog):
         self.spin_audio_interval_sec.setRange(1, 600)
         self.spin_audio_interval_sec.setValue(60)
         self.spin_audio_interval_sec.setSuffix(" s")
+        self.spin_tcp_audio_sample_rate = QSpinBox()
+        self.spin_tcp_audio_sample_rate.setRange(1000, 192000)
+        self.spin_tcp_audio_sample_rate.setValue(16000)
+        self.spin_tcp_audio_sample_rate.setSuffix(" Hz")
+        self.spin_tcp_audio_bit_depth = QSpinBox()
+        self.spin_tcp_audio_bit_depth.setRange(8, 32)
+        self.spin_tcp_audio_bit_depth.setSingleStep(8)
+        self.spin_tcp_audio_bit_depth.setValue(16)
+        self.spin_tcp_audio_bit_depth.setSuffix(" bit")
 
         # 按钮
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -304,6 +338,8 @@ class AnalysisConfigView(QDialog):
         form.addRow(QLabel("客户端 IP"), self.line_client_ip)
         form.addRow(QLabel("端 口 号"), self.spin_port)
         form.addRow(QLabel("音频发送间隔"), self.spin_audio_interval_sec)
+        form.addRow(QLabel("TCP 音频采样率"), self.spin_tcp_audio_sample_rate)
+        form.addRow(QLabel("TCP 音频位深度"), self.spin_tcp_audio_bit_depth)
 
         self.btn_manage_models = QPushButton("模型管理")
         bottom_layout = QHBoxLayout()
@@ -327,6 +363,8 @@ class AnalysisConfigView(QDialog):
         self.line_client_ip.setEnabled(bool(enabled))
         self.spin_port.setEnabled(bool(enabled))
         self.spin_audio_interval_sec.setEnabled(bool(enabled))
+        self.spin_tcp_audio_sample_rate.setEnabled(bool(enabled))
+        self.spin_tcp_audio_bit_depth.setEnabled(bool(enabled))
 
     def set_ai_controls_enabled(self, enabled: bool) -> None:
         self.spin_time.setEnabled(bool(enabled))
@@ -425,6 +463,14 @@ class AnalysisConfigController:
             self.view.spin_audio_interval_sec.setValue(int(self.tcp_model.audio_interval_sec))
         except Exception as e:
             self.view.spin_audio_interval_sec.setValue(60)
+        try:
+            self.view.spin_tcp_audio_sample_rate.setValue(int(self.tcp_model.tcp_audio_sample_rate))
+        except Exception as e:
+            self.view.spin_tcp_audio_sample_rate.setValue(16000)
+        try:
+            self.view.spin_tcp_audio_bit_depth.setValue(int(self.tcp_model.tcp_audio_bit_depth))
+        except Exception as e:
+            self.view.spin_tcp_audio_bit_depth.setValue(16)
 
     def _bind(self) -> None:
         self.view.checkbox_use_ai.toggled.connect(self.on_toggle_use_ai)
@@ -495,6 +541,9 @@ class AnalysisConfigController:
             interval_sec = int(self.view.spin_audio_interval_sec.value())
             if interval_sec < 1 or interval_sec > 600:
                 return False, "音频发送间隔应在 1-600 秒之间"
+            bit_depth = int(self.view.spin_tcp_audio_bit_depth.value())
+            if bit_depth not in (8, 16, 32):
+                return False, "TCP 音频位深度仅支持 8、16、32"
         if self.view.checkbox_use_ai.isChecked():
             if self.view.combo_model.count() == 0 or self.view.combo_model.itemText(0) == "无可用模型":
                 return False, "启用 AI 时需要可用的模型"
@@ -548,6 +597,8 @@ class AnalysisConfigController:
             client_ip=self.view.line_client_ip.text().strip() or "192.168.2.168",
             enable_audio_tcp=enable_audio_tcp,
             audio_interval_sec=int(self.view.spin_audio_interval_sec.value()),
+            tcp_audio_sample_rate=int(self.view.spin_tcp_audio_sample_rate.value()),
+            tcp_audio_bit_depth=int(self.view.spin_tcp_audio_bit_depth.value()),
         )
 
         self._result_values = {
@@ -571,6 +622,8 @@ class AnalysisConfigController:
                 "enable_audio_tcp": self.tcp_model.enable_audio_tcp,
                 "port": self.tcp_model.port,
                 "audio_interval_sec": self.tcp_model.audio_interval_sec,
+                "tcp_audio_sample_rate": self.tcp_model.tcp_audio_sample_rate,
+                "tcp_audio_bit_depth": self.tcp_model.tcp_audio_bit_depth,
             },
         }
         self.view.accept()

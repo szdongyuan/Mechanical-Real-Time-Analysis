@@ -4,11 +4,12 @@ import tempfile
 import threading
 import time
 import multiprocessing as mp
+from math import gcd
 
 import librosa
 import sounddevice as sd
 import numpy as np
-from scipy.signal import spectrogram
+from scipy.signal import resample_poly, spectrogram
 from PyQt5.QtCore import QTimer, Qt, QObject, pyqtSignal
 from PyQt5.QtWidgets import QMessageBox, QFileDialog
 
@@ -23,7 +24,7 @@ from base.record_audio import AudioDataManager
 from base.data_struct.data_deal_struct import DataDealStruct
 from base.data_struct.audio_segment_extractor import AudioSegmentExtractor
 from base.sound_device_manager import sd, change_default_mic
-from base.tcp.tcp_client import send_audio_array, send_dict
+from base.tcp.tcp_client import estimate_tcp_send_timeout_sec, send_audio_array, send_dict
 
 from consts import error_code
 from consts.running_consts import DEFAULT_DIR, PEAK_DETECTION_CONFIG_JSON, PEAK_DETECTION_SETTINGS_JSON
@@ -31,6 +32,47 @@ from consts.running_consts import DEFAULT_DIR, PEAK_DETECTION_CONFIG_JSON, PEAK_
 from my_controls.countdown import Countdown
 from ui.device_list import DeviceListWindow
 from ui.machine_record_view.center_widget import CenterWidget
+
+
+def _normalize_tcp_audio_sample_rate(value, source_sample_rate: int) -> int:
+    try:
+        target_sample_rate = int(value)
+    except Exception:
+        target_sample_rate = 16000
+    source_sample_rate = max(1, int(source_sample_rate))
+    target_sample_rate = max(1, target_sample_rate)
+    return min(target_sample_rate, source_sample_rate)
+
+
+def _tcp_audio_bytes_per_sample(bit_depth: int) -> int:
+    bit_depth = int(bit_depth)
+    if bit_depth == 8:
+        return 1
+    if bit_depth == 16:
+        return 2
+    return 4
+
+
+def _estimate_tcp_audio_payload_bytes(shape, bit_depth: int) -> int:
+    channels, samples = int(shape[0]), int(shape[1])
+    return channels * samples * _tcp_audio_bytes_per_sample(bit_depth)
+
+
+def _normalize_tcp_audio_bit_depth(value) -> int:
+    try:
+        bit_depth = int(value)
+    except Exception:
+        bit_depth = 16
+    return bit_depth if bit_depth in (8, 16, 32) else 16
+
+
+def _resample_tcp_audio(audio_data: np.ndarray, source_sample_rate: int, target_sample_rate: int) -> np.ndarray:
+    if target_sample_rate >= source_sample_rate:
+        return audio_data
+    common_divisor = gcd(int(source_sample_rate), int(target_sample_rate))
+    up = int(target_sample_rate) // common_divisor
+    down = int(source_sample_rate) // common_divisor
+    return resample_poly(audio_data, up, down, axis=1).astype(np.float32, copy=False)
 
 
 class MainWindowMode:
@@ -452,15 +494,29 @@ class MainWindowController:
         client_host = str(cfg.get("client_ip", "192.168.2.168") or "192.168.2.168")
         server_port = int(cfg.get("port", 50000))
         selected_channels = list(self.model.selected_channels)
-        sample_rate = int(self.model.sampling_rate)
+        original_sample_rate = int(self.model.sampling_rate)
+        sample_rate = _normalize_tcp_audio_sample_rate(cfg.get("tcp_audio_sample_rate", 16000), original_sample_rate)
+        sample_bit_depth = _normalize_tcp_audio_bit_depth(cfg.get("tcp_audio_bit_depth", 16))
+        audio_data = _resample_tcp_audio(audio_data, original_sample_rate, sample_rate)
         duration_sec = int(self.model.tcp_audio_interval_sec)
         extra_metadata = {
             "record_start_time": self.model.start_record_time,
             "device_name": self.model.select_device_name,
+            "original_sample_rate": original_sample_rate,
+            "tcp_audio_sample_rate": sample_rate,
+            "tcp_audio_bit_depth": sample_bit_depth,
         }
+
+        payload_bytes = _estimate_tcp_audio_payload_bytes(audio_data.shape, sample_bit_depth)
+        timeout_sec = estimate_tcp_send_timeout_sec(payload_bytes)
 
         def _send():
             try:
+                print(
+                    f"音频 TCP 开始发送: {client_host} -> {server_host}:{server_port}, "
+                    f"shape={audio_data.shape}, sample_rate={sample_rate}, bit_depth={sample_bit_depth}, "
+                    f"payload≈{payload_bytes}B, timeout={timeout_sec:.0f}s"
+                )
                 send_audio_array(
                     server_host=server_host,
                     server_port=server_port,
@@ -468,14 +524,22 @@ class MainWindowController:
                     sample_rate=sample_rate,
                     selected_channels=selected_channels,
                     bind_host=client_host,
-                    timeout_sec=10.0,
+                    timeout_sec=timeout_sec,
                     wait_response=False,
                     duration_sec=duration_sec,
                     extra_metadata=extra_metadata,
+                    sample_bit_depth=sample_bit_depth,
                 )
-                self.logger.info(f"音频 TCP 发送成功: {server_host}:{server_port}, shape={audio_data.shape}")
+                msg = (
+                    f"音频 TCP 本轮发送结束（短连接已关闭）: {client_host} -> {server_host}:{server_port}, "
+                    f"shape={audio_data.shape}, duration={duration_sec}s"
+                )
+                self.logger.info(msg)
+                print(msg)
             except Exception as exc:
-                self.logger.error(f"音频 TCP 发送失败: {exc}")
+                err = f"音频 TCP 发送失败: {exc}"
+                self.logger.error(err)
+                print(err)
             finally:
                 self.model.tcp_audio_sending = False
 
@@ -846,6 +910,8 @@ class MainWindowController:
             "ip": "192.168.2.141",
             "port": 50000,
             "audio_interval_sec": 60,
+            "tcp_audio_sample_rate": 16000,
+            "tcp_audio_bit_depth": 16,
         }
         if os.path.exists(tcp_config_path):
             with open(tcp_config_path, "r", encoding="utf-8") as f:
@@ -867,6 +933,12 @@ class MainWindowController:
             interval_sec = 60
         interval_sec = max(1, min(interval_sec, int(self.model.total_display_time)))
         merged_config["audio_interval_sec"] = interval_sec
+        merged_config["tcp_audio_sample_rate"] = _normalize_tcp_audio_sample_rate(
+            merged_config.get("tcp_audio_sample_rate", 16000), self.model.sampling_rate
+        )
+        merged_config["tcp_audio_bit_depth"] = _normalize_tcp_audio_bit_depth(
+            merged_config.get("tcp_audio_bit_depth", 16)
+        )
         self.model.tcp_audio_interval_sec = interval_sec
         self.model.tcp_audio_timer.setInterval(interval_sec * 1000)
         self.model.tcp_config = merged_config

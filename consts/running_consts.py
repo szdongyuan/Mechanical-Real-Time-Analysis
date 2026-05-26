@@ -1,8 +1,15 @@
 import os
 import sys
 
-# DEFAULT_DIR = os.path.split(os.path.realpath(__file__))[0].replace("\\", "/") + "/../"
-DEFAULT_DIR = os.path.dirname(os.path.realpath(sys.argv[0])).replace("\\", "/") + "/"
+
+def get_app_base_dir() -> str:
+    """Application root: directory containing the exe (frozen) or entry script (dev)."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.realpath(sys.executable))
+    return os.path.dirname(os.path.realpath(sys.argv[0]))
+
+
+DEFAULT_DIR = get_app_base_dir().replace("\\", "/") + "/"
 
 PEAK_DETECTION_SETTINGS_JSON = DEFAULT_DIR + "configs/ai_model_config/peak_detection_models.json"
 PEAK_DETECTION_CONFIG_JSON   = DEFAULT_DIR + "configs/ai_model_config/peak_detection_config.json"

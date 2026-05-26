@@ -3,7 +3,9 @@ import os
 import sys
 from typing import Optional, Tuple, Dict
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from consts.running_consts import DEFAULT_DIR
+
+PROJECT_ROOT = DEFAULT_DIR.rstrip("/\\")
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 UI_CONFIG_DIR = os.path.join(PROJECT_ROOT, "ui", "ui_config")
@@ -37,6 +39,8 @@ class TcpConfigDialog(QDialog):
         self.client_ip_edit = QLineEdit()
         self.port_spin = QSpinBox()
         self.audio_interval_spin = QSpinBox()
+        self.tcp_audio_sample_rate_spin = QSpinBox()
+        self.tcp_audio_bit_depth_spin = QSpinBox()
 
         # IP 输入：默认 127.0.0.1，正则约束每段 0-255
         self.ip_edit.setPlaceholderText("192.168.2.141")
@@ -56,6 +60,13 @@ class TcpConfigDialog(QDialog):
         self.audio_interval_spin.setRange(1, 600)
         self.audio_interval_spin.setValue(60)
         self.audio_interval_spin.setSuffix(" s")
+        self.tcp_audio_sample_rate_spin.setRange(1000, 192000)
+        self.tcp_audio_sample_rate_spin.setValue(16000)
+        self.tcp_audio_sample_rate_spin.setSuffix(" Hz")
+        self.tcp_audio_bit_depth_spin.setRange(8, 32)
+        self.tcp_audio_bit_depth_spin.setSingleStep(8)
+        self.tcp_audio_bit_depth_spin.setValue(16)
+        self.tcp_audio_bit_depth_spin.setSuffix(" bit")
 
         # 默认值
         self.enable_checkbox.setChecked(False)
@@ -78,6 +89,14 @@ class TcpConfigDialog(QDialog):
             self.audio_interval_spin.setValue(int(cfg.get("audio_interval_sec", 60)))
         except Exception:
             self.audio_interval_spin.setValue(60)
+        try:
+            self.tcp_audio_sample_rate_spin.setValue(int(cfg.get("tcp_audio_sample_rate", 16000)))
+        except Exception:
+            self.tcp_audio_sample_rate_spin.setValue(16000)
+        try:
+            self.tcp_audio_bit_depth_spin.setValue(int(cfg.get("tcp_audio_bit_depth", 16)))
+        except Exception:
+            self.tcp_audio_bit_depth_spin.setValue(16)
 
         # 表单布局
         form = QFormLayout()
@@ -87,6 +106,8 @@ class TcpConfigDialog(QDialog):
         form.addRow("客户端 IP", self.client_ip_edit)
         form.addRow("端口号", self.port_spin)
         form.addRow("音频发送间隔", self.audio_interval_spin)
+        form.addRow("TCP 音频采样率", self.tcp_audio_sample_rate_spin)
+        form.addRow("TCP 音频位深度", self.tcp_audio_bit_depth_spin)
 
         # 按钮
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
@@ -130,6 +151,9 @@ class TcpConfigDialog(QDialog):
         audio_interval_sec = int(self.audio_interval_spin.value())
         if audio_interval_sec < 1 or audio_interval_sec > 600:
             return False, "音频发送间隔应在 1-600 秒之间"
+        bit_depth = int(self.tcp_audio_bit_depth_spin.value())
+        if bit_depth not in (8, 16, 32):
+            return False, "TCP 音频位深度仅支持 8、16、32"
         return True, ""
 
     def _on_accept(self):
@@ -145,6 +169,8 @@ class TcpConfigDialog(QDialog):
             "ip": self.ip_edit.text().strip(),
             "port": int(self.port_spin.value()),
             "audio_interval_sec": int(self.audio_interval_spin.value()),
+            "tcp_audio_sample_rate": int(self.tcp_audio_sample_rate_spin.value()),
+            "tcp_audio_bit_depth": int(self.tcp_audio_bit_depth_spin.value()),
         }
         # 保存到 json
         try:
@@ -167,6 +193,8 @@ class TcpConfigDialog(QDialog):
             "ip": self.ip_edit.text().strip() or "192.168.2.141",
             "port": int(self.port_spin.value()),
             "audio_interval_sec": int(self.audio_interval_spin.value()),
+            "tcp_audio_sample_rate": int(self.tcp_audio_sample_rate_spin.value()),
+            "tcp_audio_bit_depth": int(self.tcp_audio_bit_depth_spin.value()),
         })
 
 
